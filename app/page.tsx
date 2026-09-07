@@ -4,9 +4,12 @@ const RoomBookingSystem = () => {
   // ============= FIREBASE CONFIG =============
   // Replace these with your Firebase project credentials
   const FIREBASE_CONFIG = {
-    apiKey: "YOUR_API_KEY_HERE",
-    projectId: "YOUR_PROJECT_ID_HERE",
-    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com"
+    apiKey: "AIzaSyB0AcXlHlrru2qgyBTDqHmCjGm9GU4wcuw"
+,
+    projectId: "fireside-project-room"
+,
+    databaseURL: https://fireside-project-room-default-rtdb.firebaseio.com
+
   };
 
   const ROOMS = ["Prithvi", "Akash", "Tejas"];
