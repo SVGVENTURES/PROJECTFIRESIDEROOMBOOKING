@@ -8,7 +8,7 @@ const RoomBookingSystem = () => {
 ,
     projectId: "fireside-project-room"
 ,
-    databaseURL: https://fireside-project-room-default-rtdb.firebaseio.com
+    databaseURL: "https://fireside-project-room-default-rtdb.firebaseio.com"
 
   };
 
