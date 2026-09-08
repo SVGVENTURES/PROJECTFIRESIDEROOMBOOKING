@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const RoomBookingSystem = () => {
   const ROOMS = ["UR1", "UR2", "Prithvi", "Tejas", "Akash"];
-  const OFFICE_HOURS = { start: 9, end: 22 };
+  const OFFICE_HOURS = { start: 10, end: 20 }; // 10 AM to 8 PM
 
   // ============= STATE =============
   const [userName, setUserName] = useState("");
@@ -14,6 +14,10 @@ const RoomBookingSystem = () => {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [viewMode, setViewMode] = useState("booking"); // "booking" or "viewBookings"
+  const [editingBooking, setEditingBooking] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [editSlots, setEditSlots] = useState({});
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // ============= HELPER FUNCTIONS =============
   function getTodayDateString() {
@@ -49,9 +53,22 @@ const RoomBookingSystem = () => {
 
   function isSlotBooked(room, date, slotIndex) {
     const slots = getTimeSlots();
-    const slotTime = slots[slotIndex];
     
     return bookings.some(booking => {
+      if (booking.room !== room || booking.date !== date) return false;
+      
+      const bookingStartIndex = slots.indexOf(booking.startTime);
+      const bookingEndIndex = slots.indexOf(booking.endTime);
+      
+      return slotIndex >= bookingStartIndex && slotIndex < bookingEndIndex;
+    });
+  }
+
+  function isSlotBookedExcept(room, date, slotIndex, exceptBookingId) {
+    const slots = getTimeSlots();
+    
+    return bookings.some(booking => {
+      if (booking.id === exceptBookingId) return false; // Exclude the booking being edited
       if (booking.room !== room || booking.date !== date) return false;
       
       const bookingStartIndex = slots.indexOf(booking.startTime);
@@ -90,6 +107,19 @@ const RoomBookingSystem = () => {
     }
   }
 
+  function handleDateInputChange(newDate) {
+    const today = getTodayDateString();
+    if (newDate >= today) {
+      setSelectedDate(newDate);
+      setSelectedSlots({});
+      setShowDatePicker(false);
+      setError("");
+      setSuccessMessage("");
+    } else {
+      setError("Please select valid date");
+    }
+  }
+
   // ============= HANDLERS =============
   function handleSetUserName() {
     if (userNameInput.trim()) {
@@ -101,6 +131,28 @@ const RoomBookingSystem = () => {
 
   function handleSlotClick(room, slotIndex) {
     setSelectedSlots(prev => {
+      const updatedSlots = { ...prev };
+      if (!updatedSlots[room]) {
+        updatedSlots[room] = [];
+      }
+
+      const index = updatedSlots[room].indexOf(slotIndex);
+      if (index > -1) {
+        updatedSlots[room].splice(index, 1);
+      } else {
+        updatedSlots[room].push(slotIndex);
+      }
+
+      if (updatedSlots[room].length === 0) {
+        delete updatedSlots[room];
+      }
+
+      return updatedSlots;
+    });
+  }
+
+  function handleEditSlotClick(room, slotIndex) {
+    setEditSlots(prev => {
       const updatedSlots = { ...prev };
       if (!updatedSlots[room]) {
         updatedSlots[room] = [];
@@ -181,31 +233,128 @@ const RoomBookingSystem = () => {
 
     setLoading(true);
 
-    setBookings([...bookings, ...newBookings].sort((a, b) => {
-      const aTime = new Date(`${a.date}T${a.startTime}`);
-      const bTime = new Date(`${b.date}T${b.startTime}`);
-      return aTime - bTime;
-    }));
+    setTimeout(() => {
+      setBookings([...bookings, ...newBookings].sort((a, b) => {
+        const aTime = new Date(`${a.date}T${a.startTime}`);
+        const bTime = new Date(`${b.date}T${b.startTime}`);
+        return aTime - bTime;
+      }));
 
-    setSuccessMessage(`Successfully booked ${roomsWithSlots.join(", ")}!`);
-    setSelectedSlots({});
-    setLoading(false);
+      setSuccessMessage(`Successfully booked ${roomsWithSlots.join(", ")}!`);
+      setSelectedSlots({});
+      setLoading(false);
 
-    setTimeout(() => setSuccessMessage(""), 4000);
+      setTimeout(() => {
+        setViewMode("viewBookings");
+        setSuccessMessage("");
+      }, 1500);
+    }, 500);
   }
 
-  function handleCancelBooking(booking) {
+  function handleStartEdit(booking) {
     if (booking.bookedBy !== userName) {
-      setError("You can only cancel your own bookings");
+      setError("You can only edit your own bookings");
       return;
     }
 
-    if (!confirm(`Are you sure you want to cancel ${booking.room} booking on ${formatDateString(booking.date)} from ${booking.startTime} to ${booking.endTime}?`)) {
+    setEditingBooking(booking);
+    setEditDate(booking.date);
+    const slots = getTimeSlots();
+    const startIndex = slots.indexOf(booking.startTime);
+    const endIndex = slots.indexOf(booking.endTime);
+    const duration = endIndex - startIndex;
+    const slotIndices = Array.from({length: duration}, (_, i) => startIndex + i);
+    setEditSlots({ [booking.room]: slotIndices });
+  }
+
+  function handleSaveEdit() {
+    setError("");
+    setSuccessMessage("");
+
+    if (!editingBooking) return;
+
+    const roomsWithSlots = Object.keys(editSlots).filter(room => editSlots[room].length > 0);
+    if (roomsWithSlots.length === 0) {
+      setError("Please select at least one time slot");
+      return;
+    }
+
+    if (roomsWithSlots.length > 1) {
+      setError("You can only edit one room per booking");
+      return;
+    }
+
+    const room = roomsWithSlots[0];
+    const slotIndices = getConsecutiveSlots(room, editSlots[room]);
+    
+    if (!slotIndices) {
+      setError(`${room}: Please select consecutive time slots only`);
+      return;
+    }
+
+    const { startTime, endTime } = formatTimeRange(slotIndices[0], slotIndices.length);
+
+    // Check for conflicts (excluding the current booking)
+    const hasConflict = bookings.some(booking => {
+      if (booking.id === editingBooking.id) return false; // Exclude current booking
+      if (booking.room !== room || booking.date !== editDate) return false;
+      const slots = getTimeSlots();
+      const bookingStartIndex = slots.indexOf(booking.startTime);
+      const bookingEndIndex = slots.indexOf(booking.endTime);
+      const newStartIndex = slots.indexOf(startTime);
+      const newEndIndex = slots.indexOf(endTime);
+      
+      return !(newEndIndex <= bookingStartIndex || newStartIndex >= bookingEndIndex);
+    });
+
+    if (hasConflict) {
+      setError(`${room} is already booked during this time`);
+      return;
+    }
+
+    // Update the booking
+    const updatedBookings = bookings.map(b => {
+      if (b.id === editingBooking.id) {
+        return {
+          ...b,
+          room: room,
+          date: editDate,
+          startTime: startTime,
+          endTime: endTime
+        };
+      }
+      return b;
+    }).sort((a, b) => {
+      const aTime = new Date(`${a.date}T${a.startTime}`);
+      const bTime = new Date(`${b.date}T${b.startTime}`);
+      return aTime - bTime;
+    });
+
+    setBookings(updatedBookings);
+    setEditingBooking(null);
+    setEditSlots({});
+    setSuccessMessage("Booking updated successfully");
+    setTimeout(() => setSuccessMessage(""), 4000);
+  }
+
+  function handleCancelEdit() {
+    setEditingBooking(null);
+    setEditSlots({});
+    setError("");
+  }
+
+  function handleDeleteBooking(booking) {
+    if (booking.bookedBy !== userName) {
+      setError("You can only delete your own bookings");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${booking.room} booking on ${formatDateString(booking.date)} from ${booking.startTime} to ${booking.endTime}?`)) {
       return;
     }
 
     setBookings(bookings.filter(b => b.id !== booking.id));
-    setSuccessMessage(`Booking cancelled successfully`);
+    setSuccessMessage(`Booking deleted successfully`);
     setTimeout(() => setSuccessMessage(""), 4000);
   }
 
@@ -222,8 +371,7 @@ const RoomBookingSystem = () => {
         <div style={styles.setupCard}>
           <h1 style={styles.brandTitle}>FIRESIDE</h1>
           <p style={styles.brandSubtitle}>Ventures</p>
-          <h2 style={styles.setupTitle}>Room Booking System</h2>
-          <p style={styles.setupDescription}>Access our premium meeting rooms and book your space with ease.</p>
+          <h2 style={styles.setupTitle}>Room Booking Hub</h2>
           <input
             type="text"
             placeholder="Full Name"
@@ -281,64 +429,90 @@ const RoomBookingSystem = () => {
 
           {/* Date Navigation */}
           <div style={styles.dateNavigation}>
-            <button 
-              onClick={() => changeDate(-1)}
-              style={styles.dateButton}
-            >
-              ← Previous
-            </button>
             <h2 style={styles.dateDisplay}>{formatDateString(selectedDate)}</h2>
-            <button 
-              onClick={() => changeDate(1)}
-              style={styles.dateButton}
-            >
-              Next →
-            </button>
+            <div style={styles.dateButtonGroup}>
+              <button 
+                onClick={() => changeDate(1)}
+                style={styles.dateButton}
+              >
+                Next →
+              </button>
+              <button 
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                style={styles.dateButton}
+              >
+                📅 Custom Date
+              </button>
+            </div>
           </div>
+
+          {/* Date Picker */}
+          {showDatePicker && (
+            <div style={styles.datePickerContainer}>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => handleDateInputChange(e.target.value)}
+                min={getTodayDateString()}
+                style={styles.datePickerInput}
+              />
+              <button 
+                onClick={() => setShowDatePicker(false)}
+                style={styles.datePickerClose}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Time Slots Grid */}
-          <div style={styles.gridContainer}>
-            {/* Header Row - Room Names */}
-            <div style={styles.gridHeader}>
-              <div style={styles.timeColumnHeader}>Time</div>
-              {ROOMS.map(room => (
-                <div key={room} style={styles.roomColumnHeader}>
-                  {room}
-                </div>
-              ))}
-            </div>
+          <div style={styles.gridWrapper}>
+            <div style={styles.gridContainer}>
+              {/* Header Row - Room Names */}
+              <div style={styles.gridHeader}>
+                <div style={styles.timeColumnHeader}>Time</div>
+                {ROOMS.map(room => (
+                  <div key={room} style={styles.roomColumnHeader}>
+                    {room}
+                  </div>
+                ))}
+              </div>
 
-            {/* Time Slot Rows */}
-            {timeSlots.map((slot, index) => {
-              return (
-                <div key={slot} style={styles.gridRow}>
-                  <div style={styles.timeCell}>{slot}</div>
-                  {ROOMS.map(room => {
-                    const isSelected = selectedSlots[room] && selectedSlots[room].includes(index);
-                    const isBooked = isSlotBooked(room, selectedDate, index);
-                    
-                    return (
-                      <div
-                        key={`${room}-${slot}`}
-                        onClick={() => !isBooked && handleSlotClick(room, index)}
-                        style={{
-                          ...styles.slotCell,
-                          ...(isBooked ? styles.slotBooked : {}),
-                          ...(isSelected ? styles.slotSelected : {}),
-                          ...(isBooked ? {} : styles.slotClickable)
-                        }}
-                        title={isBooked ? "This slot is booked" : "Click to select"}
-                      >
-                        {isSelected && <span style={styles.checkmark}>✓</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+              {/* Time Slot Rows */}
+              {timeSlots.map((slot, index) => {
+                return (
+                  <div key={slot} style={styles.gridRow}>
+                    <div style={styles.timeCell}>{slot}</div>
+                    {ROOMS.map(room => {
+                      const isSelected = selectedSlots[room] && selectedSlots[room].includes(index);
+                      const isBooked = isSlotBooked(room, selectedDate, index);
+                      
+                      return (
+                        <div
+                          key={`${room}-${slot}`}
+                          onClick={() => !isBooked && handleSlotClick(room, index)}
+                          style={{
+                            ...styles.slotCell,
+                            ...(isBooked ? styles.slotBooked : {}),
+                            ...(isSelected ? styles.slotSelected : {}),
+                            ...(isBooked ? {} : styles.slotClickable)
+                          }}
+                          title={isBooked ? "This slot is booked" : "Click to select"}
+                        >
+                          {isSelected && <span style={styles.checkmark}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={styles.gridNote}>
+              1 slot = 30 min<br/>10:00 = 10:00-10:30
+            </div>
           </div>
 
-          {/* Book Button */}
+          {/* Book Button - Sticky */}
           <div style={styles.bookButtonContainer}>
             <button
               onClick={handleBookRoom}
@@ -395,6 +569,85 @@ const RoomBookingSystem = () => {
             </div>
           )}
 
+          {/* Edit Modal */}
+          {editingBooking && (
+            <div style={styles.modal}>
+              <div style={styles.modalContent}>
+                <div style={styles.modalHeader}>
+                  <h2 style={{margin: 0}}>Edit Booking</h2>
+                  <button onClick={handleCancelEdit} style={styles.modalClose}>✕</button>
+                </div>
+
+                {error && (
+                  <div style={styles.errorMessage} role="alert">
+                    <span style={styles.errorIcon}>⚠</span> {error}
+                  </div>
+                )}
+
+                <div style={styles.editForm}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.editLabel}>Date</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => {
+                        const today = getTodayDateString();
+                        if (e.target.value >= today) {
+                          setEditDate(e.target.value);
+                        } else {
+                          setError("Please select a valid date");
+                        }
+                      }}
+                      min={getTodayDateString()}
+                      style={styles.datePickerInput}
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.editLabel}>Room: {editingBooking.room}</label>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.editLabel}>Select Time Slots</label>
+                    <div style={styles.editGridContainer}>
+                      <div style={styles.editGridHeader}>
+                        <div style={styles.timeColumnHeader}>Time</div>
+                        <div style={styles.roomColumnHeader}>{editingBooking.room}</div>
+                      </div>
+                      {getTimeSlots().map((slot, index) => {
+                        const isSelected = editSlots[editingBooking.room] && editSlots[editingBooking.room].includes(index);
+                        const isBooked = isSlotBookedExcept(editingBooking.room, editDate, index, editingBooking.id);
+                        
+                        return (
+                          <div key={slot} style={styles.editGridRow}>
+                            <div style={styles.timeCell}>{slot}</div>
+                            <div
+                              onClick={() => !isBooked && handleEditSlotClick(editingBooking.room, index)}
+                              style={{
+                                ...styles.slotCell,
+                                ...(isBooked ? styles.slotBooked : {}),
+                                ...(isSelected ? styles.slotSelected : {}),
+                                ...(isBooked ? {} : styles.slotClickable)
+                              }}
+                              title={isBooked ? "This slot is booked" : "Click to select"}
+                            >
+                              {isSelected && <span style={styles.checkmark}>✓</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={styles.modalButtons}>
+                    <button onClick={handleCancelEdit} style={styles.secondaryButton}>Cancel</button>
+                    <button onClick={handleSaveEdit} style={styles.primaryButton}>Save Changes</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={styles.bookingsTabs}>
             <h2 style={styles.bookingsTitle}>Your Bookings <span style={styles.badgeCount}>{userBookings.length}</span></h2>
           </div>
@@ -428,15 +681,22 @@ const RoomBookingSystem = () => {
                         Booked by <strong>{booking.bookedBy}</strong>
                       </div>
                     </div>
-                    {isUpcoming && (
+                    <div style={styles.bookingActions}>
                       <button
-                        onClick={() => { handleCancelBooking(booking); }}
+                        onClick={() => handleStartEdit(booking)}
+                        style={styles.editButton}
+                        title="Edit this booking"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBooking(booking)}
                         style={styles.cancelButton}
-                        title="Cancel this booking"
+                        title="Delete this booking"
                       >
                         ✕
                       </button>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -477,14 +737,23 @@ const RoomBookingSystem = () => {
                         Booked by <strong>{booking.bookedBy}</strong>
                       </div>
                     </div>
-                    {isUserBooking && isUpcoming && (
-                      <button
-                        onClick={() => { handleCancelBooking(booking); }}
-                        style={styles.cancelButton}
-                        title="Cancel this booking"
-                      >
-                        ✕
-                      </button>
+                    {isUserBooking && (
+                      <div style={styles.bookingActions}>
+                        <button
+                          onClick={() => handleStartEdit(booking)}
+                          style={styles.editButton}
+                          title="Edit this booking"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBooking(booking)}
+                          style={styles.cancelButton}
+                          title="Delete this booking"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
@@ -590,7 +859,7 @@ const styles = {
   },
   dateNavigation: {
     display: "flex",
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: "30px",
     marginBottom: "30px",
@@ -602,7 +871,10 @@ const styles = {
     color: "#8B0000",
     margin: 0,
     minWidth: "200px",
-    textAlign: "center",
+  },
+  dateButtonGroup: {
+    display: "flex",
+    gap: "10px",
   },
   dateButton: {
     padding: "10px 20px",
@@ -615,9 +887,38 @@ const styles = {
     fontWeight: "600",
     transition: "all 0.3s ease",
   },
+  datePickerContainer: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "20px",
+    padding: "15px",
+    backgroundColor: "#f9f9f9",
+    borderRadius: "14px",
+    alignItems: "center",
+  },
+  datePickerInput: {
+    padding: "10px 15px",
+    border: "1px solid #e0e0e0",
+    borderRadius: "14px",
+    fontSize: "14px",
+    cursor: "pointer",
+    flex: 1,
+  },
+  datePickerClose: {
+    padding: "8px 12px",
+    backgroundColor: "#8B0000",
+    color: "#FFF",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "16px",
+  },
+  gridWrapper: {
+    position: "relative",
+    marginBottom: "30px",
+  },
   gridContainer: {
     overflowX: "auto",
-    marginBottom: "30px",
     border: "1px solid #e0e0e0",
     borderRadius: "14px",
   },
@@ -629,6 +930,15 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 10,
+  },
+  gridNote: {
+    position: "absolute",
+    top: "-35px",
+    right: "0",
+    fontSize: "11px",
+    color: "#999",
+    textAlign: "right",
+    lineHeight: "1.4",
   },
   timeColumnHeader: {
     padding: "15px",
@@ -699,6 +1009,12 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     marginTop: "20px",
+    position: "sticky",
+    bottom: 0,
+    backgroundColor: "white",
+    padding: "20px 0",
+    borderTop: "1px solid #e0e0e0",
+    zIndex: 100,
   },
   primaryButton: {
     padding: "14px 40px",
@@ -712,6 +1028,17 @@ const styles = {
     transition: "background-color 0.3s ease",
     letterSpacing: "0.5px",
     minWidth: "300px",
+  },
+  secondaryButton: {
+    padding: "12px 30px",
+    backgroundColor: "transparent",
+    color: "#8B0000",
+    border: "2px solid #8B0000",
+    borderRadius: "14px",
+    fontSize: "14px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
   },
   errorMessage: {
     backgroundColor: "#fff5f5",
@@ -819,6 +1146,21 @@ const styles = {
     color: "#666",
     fontWeight: "600",
   },
+  bookingActions: {
+    display: "flex",
+    gap: "8px",
+  },
+  editButton: {
+    padding: "8px 12px",
+    backgroundColor: "#8B0000",
+    color: "#FFF",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "16px",
+    fontWeight: "400",
+    transition: "background-color 0.3s ease",
+  },
   cancelButton: {
     padding: "8px 12px",
     backgroundColor: "#8B0000",
@@ -829,6 +1171,87 @@ const styles = {
     fontSize: "16px",
     fontWeight: "400",
     transition: "background-color 0.3s ease",
+  },
+  modal: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+    padding: "20px",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: "20px",
+    maxWidth: "600px",
+    maxHeight: "90vh",
+    overflow: "auto",
+    width: "100%",
+    boxShadow: "0 4px 20px rgba(139, 0, 0, 0.2)",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "20px",
+    borderBottom: "1px solid #e0e0e0",
+  },
+  modalClose: {
+    padding: "8px 12px",
+    backgroundColor: "transparent",
+    color: "#8B0000",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "20px",
+    fontWeight: "400",
+  },
+  editForm: {
+    padding: "20px",
+  },
+  formGroup: {
+    marginBottom: "20px",
+  },
+  editLabel: {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: "600",
+    marginBottom: "10px",
+    color: "#8B0000",
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
+  },
+  editGridContainer: {
+    border: "1px solid #e0e0e0",
+    borderRadius: "14px",
+    maxHeight: "400px",
+    overflowY: "auto",
+  },
+  editGridHeader: {
+    display: "grid",
+    gridTemplateColumns: "100px 1fr",
+    gap: "0",
+    backgroundColor: "#8B0000",
+    position: "sticky",
+    top: 0,
+  },
+  editGridRow: {
+    display: "grid",
+    gridTemplateColumns: "100px 1fr",
+    gap: "0",
+    borderBottom: "1px solid #e0e0e0",
+  },
+  modalButtons: {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "flex-end",
+    marginTop: "20px",
+    paddingTop: "20px",
+    borderTop: "1px solid #e0e0e0",
   },
   emptyState: {
     textAlign: "center",
@@ -857,19 +1280,25 @@ const styles = {
   setupTitle: {
     fontSize: "24px",
     fontWeight: "700",
-    marginBottom: "16px",
-    color: "#2c2c2c",
-  },
-  setupDescription: {
-    fontSize: "15px",
-    color: "#666",
     marginBottom: "30px",
-    lineHeight: "1.6",
+    color: "#2c2c2c",
   },
   brandSubtitle: {
     fontSize: "18px",
     color: "#9CA3AF",
     marginTop: "4px",
+  },
+  input: {
+    width: "100%",
+    padding: "12px 14px",
+    backgroundColor: "#f9f9f9",
+    color: "#2c2c2c",
+    border: "1px solid #e0e0e0",
+    borderRadius: "14px",
+    fontSize: "14px",
+    boxSizing: "border-box",
+    marginBottom: "15px",
+    transition: "border-color 0.3s ease",
   },
 };
 
