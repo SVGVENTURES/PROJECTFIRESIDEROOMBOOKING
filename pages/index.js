@@ -18,6 +18,7 @@ const RoomBookingSystem = () => {
   const [editDate, setEditDate] = useState("");
   const [editSlots, setEditSlots] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showScrollPrompt, setShowScrollPrompt] = useState(false);
   const bookButtonRef = useRef(null);
 
   // Add animations on mount
@@ -46,6 +47,15 @@ const RoomBookingSystem = () => {
     `;
     document.head.appendChild(styleSheet);
   }, []);
+
+  useEffect(() => {
+    const hasSelectedSlots = Object.keys(selectedSlots).length > 0;
+    if (hasSelectedSlots) {
+      setShowScrollPrompt(true);
+    } else {
+      setShowScrollPrompt(false);
+    }
+  }, [selectedSlots]);
 
   // ============= HELPER FUNCTIONS =============
   function getTodayDateString() {
@@ -143,6 +153,7 @@ const RoomBookingSystem = () => {
   function scrollToConfirmButton() {
     if (bookButtonRef.current) {
       bookButtonRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setShowScrollPrompt(false);
     }
   }
 
@@ -538,7 +549,7 @@ const RoomBookingSystem = () => {
             </button>
           </div>
 
-          {hasSelectedSlots && (
+          {showScrollPrompt && (
             <button onClick={scrollToConfirmButton} style={styles.scrollPrompt}>
               <div style={styles.scrollPromptContent}>
                 <div style={styles.scrollArrow}>↓</div>
