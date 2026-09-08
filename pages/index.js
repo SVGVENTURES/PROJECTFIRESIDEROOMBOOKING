@@ -99,7 +99,7 @@ const RoomBookingSystem = () => {
     currentDate.setDate(currentDate.getDate() + days);
     const newDateString = currentDate.toISOString().split('T')[0];
     
-    if (newDateString >= getTodayDateString()) {
+    if (new Date(newDateString) >= new Date(getTodayDateString())) {
       setSelectedDate(newDateString);
       setSelectedSlots({}); // Reset selections on date change
       setError("");
