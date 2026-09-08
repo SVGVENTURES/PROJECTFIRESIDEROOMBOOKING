@@ -1,15 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const RoomBookingSystem = () => {
-  // ============= FIREBASE CONFIG =============
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB0AcXlHlrru2qgyBTDqHmCjGm9GU4wcuw",
-    projectId: "fireside-project-room",
-    databaseURL: "https://fireside-project-room-default-rtdb.firebaseio.com"
-  };
-
-  const ROOMS = ["Prithvi", "Akash", "Tejas"];
-  const OFFICE_HOURS = { start: 8, end: 18 };
+  const ROOMS = ["UR1", "UR2", "Prithvi", "Tejas", "Akash"];
+  const OFFICE_HOURS = { start: 9, end: 22 };
 
   // ============= STATE =============
   const [userName, setUserName] = useState("");
@@ -18,43 +11,24 @@ const RoomBookingSystem = () => {
   const [selectedRoom, setSelectedRoom] = useState(ROOMS[0]);
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [selectedStartTime, setSelectedStartTime] = useState("09:00");
-  const [selectedEndTime, setSelectedEndTime] = useState("10:00");
+  const [selectedEndTime, setSelectedEndTime] = useState("09:30");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [firebaseConnected, setFirebaseConnected] = useState(false);
-  const eventSourceRef = useRef(null);
-
-  // ============= INIT & LISTENERS =============
-  useEffect(() => {
-    const stored = localStorage.getItem("roomBookingUserName");
-    if (stored) setUserName(stored);
-  }, []);
-
-  useEffect(() => {
-    if (!userName) return;
-
-    setLoading(true);
-    const unsubscribe = setupRealtimeListener((data) => {
-      const bookingsArray = data
-        ? Object.entries(data).map(([id, booking]) => ({ id, ...booking }))
-        : [];
-      setBookings(bookingsArray.sort((a, b) => {
-        const aTime = new Date(`${a.date}T${a.startTime}`);
-        const bTime = new Date(`${b.date}T${b.startTime}`);
-        return aTime - bTime;
-      }));
-      setFirebaseConnected(true);
-      setLoading(false);
-    });
-
-    return unsubscribe;
-  }, [userName]);
 
   // ============= HELPER FUNCTIONS =============
   function getTodayDateString() {
     const today = new Date();
     return today.toISOString().split('T')[0];
+  }
+
+  function formatDateString(dateStr) {
+    const date = new Date(dateStr + 'T00:00:00');
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear().toString().slice(-2);
+    return `${day} ${month} ${year}`;
   }
 
   function getTimeSlots() {
@@ -71,15 +45,17 @@ const RoomBookingSystem = () => {
     return hours * 60 + minutes;
   }
 
-  function isTimeSlotAvailable(room, date, startTime, endTime) {
-    const startMinutes = timeToMinutes(startTime);
-    const endMinutes = timeToMinutes(endTime);
+  function isRoomAvailable(room, date) {
+    return !bookings.some(booking => booking.room === room && booking.date === date);
+  }
 
-    return !bookings.some(booking => {
-      if (booking.room !== room || booking.date !== date) return false;
+  function isTimeSlotBooked(time) {
+    const timeMinutes = timeToMinutes(time);
+    return bookings.some(booking => {
+      if (booking.room !== selectedRoom || booking.date !== selectedDate) return false;
       const bookingStart = timeToMinutes(booking.startTime);
       const bookingEnd = timeToMinutes(booking.endTime);
-      return !(endMinutes <= bookingStart || startMinutes >= bookingEnd);
+      return timeMinutes >= bookingStart && timeMinutes < bookingEnd;
     });
   }
 
@@ -105,85 +81,16 @@ const RoomBookingSystem = () => {
     return `booking_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  // ============= FIREBASE OPERATIONS =============
-  async function createBooking(bookingData) {
-    const bookingId = generateId();
-    const url = `${FIREBASE_CONFIG.databaseURL}/bookings/${bookingId}.json`;
-
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bookingData)
-    });
-
-    if (!response.ok) {
-      throw new Error(`Firebase error: ${response.statusText}`);
-    }
-
-    return bookingId;
-  }
-
-  async function deleteBooking(bookingId) {
-    const url = `${FIREBASE_CONFIG.databaseURL}/bookings/${bookingId}.json`;
-
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Firebase error: ${response.statusText}`);
-    }
-  }
-
-  function setupRealtimeListener(callback) {
-    const url = `${FIREBASE_CONFIG.databaseURL}/bookings.json`;
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.data !== null) {
-          callback(message.data);
-        } else {
-          callback({});
-        }
-      } catch (err) {
-        console.error('Failed to parse Firebase message:', err);
-      }
-    };
-
-    eventSource.onerror = () => {
-      console.error('Firebase connection error');
-      eventSource.close();
-      setTimeout(() => setupRealtimeListener(callback), 3000);
-    };
-
-    eventSourceRef.current = eventSource;
-
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }
-
   // ============= HANDLERS =============
   function handleSetUserName() {
     if (userNameInput.trim()) {
       const name = userNameInput.trim();
       setUserName(name);
-      localStorage.setItem("roomBookingUserName", name);
       setUserNameInput("");
     }
   }
 
-  async function handleBookRoom() {
+  function handleBookRoom() {
     setError("");
     setSuccessMessage("");
 
@@ -192,8 +99,11 @@ const RoomBookingSystem = () => {
       return;
     }
 
-    if (selectedStartTime >= selectedEndTime) {
-      setError("Start time must be before end time");
+    const startMin = timeToMinutes(selectedStartTime);
+    const endMin = timeToMinutes(selectedEndTime);
+
+    if (startMin >= endMin) {
+      setError("End time must be after start time");
       return;
     }
 
@@ -202,13 +112,7 @@ const RoomBookingSystem = () => {
       return;
     }
 
-    const conflictMsg = getConflictMessage(
-      selectedRoom,
-      selectedDate,
-      selectedStartTime,
-      selectedEndTime
-    );
-
+    const conflictMsg = getConflictMessage(selectedRoom, selectedDate, selectedStartTime, selectedEndTime);
     if (conflictMsg) {
       setError(`Booking conflict: ${conflictMsg}`);
       return;
@@ -216,56 +120,46 @@ const RoomBookingSystem = () => {
 
     setLoading(true);
 
-    try {
-      await createBooking({
-        room: selectedRoom,
-        date: selectedDate,
-        startTime: selectedStartTime,
-        endTime: selectedEndTime,
-        bookedBy: userName,
-        createdAt: new Date().toISOString()
-      });
+    const newBooking = {
+      id: generateId(),
+      room: selectedRoom,
+      date: selectedDate,
+      startTime: selectedStartTime,
+      endTime: selectedEndTime,
+      bookedBy: userName,
+      createdAt: new Date().toISOString()
+    };
 
-      setSuccessMessage(
-        `Successfully booked ${selectedRoom} on ${selectedDate} from ${selectedStartTime} to ${selectedEndTime}`
-      );
-      setSelectedStartTime("09:00");
-      setSelectedEndTime("10:00");
+    setBookings([...bookings, newBooking].sort((a, b) => {
+      const aTime = new Date(`${a.date}T${a.startTime}`);
+      const bTime = new Date(`${b.date}T${b.startTime}`);
+      return aTime - bTime;
+    }));
 
-      setTimeout(() => setSuccessMessage(""), 4000);
-    } catch (err) {
-      setError(`Failed to create booking: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    setSuccessMessage(`Successfully booked ${selectedRoom} on ${selectedDate} from ${selectedStartTime} to ${selectedEndTime}`);
+    setSelectedStartTime("09:00");
+    setSelectedEndTime("09:30");
+    setLoading(false);
+
+    setTimeout(() => setSuccessMessage(""), 4000);
   }
 
-  async function handleCancelBooking(booking) {
+  function handleCancelBooking(booking) {
     if (booking.bookedBy !== userName) {
       setError("You can only cancel your own bookings");
       return;
     }
 
-    if (!confirm(`Cancel booking for ${booking.room} on ${booking.date}?`)) {
+    if (!confirm(`Are you sure you want to cancel ${booking.room} booking on ${formatDateString(booking.date)}?`)) {
       return;
     }
 
-    setLoading(true);
-    setError("");
-
-    try {
-      await deleteBooking(booking.id);
-    } catch (err) {
-      setError(`Failed to cancel booking: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    setBookings(bookings.filter(b => b.id !== booking.id));
   }
 
   function handleLogout() {
     setUserName("");
     setUserNameInput("");
-    localStorage.removeItem("roomBookingUserName");
   }
 
   // ============= RENDER: LOGIN SCREEN =============
@@ -273,14 +167,13 @@ const RoomBookingSystem = () => {
     return (
       <div style={styles.container}>
         <div style={styles.setupCard}>
-          <h1 style={styles.title}>Fireside Ventures</h1>
-          <p style={styles.subtitle}>Room Booking System</p>
-          <p style={styles.setupDescription}>
-            Welcome! Enter your name to access the booking system.
-          </p>
+          <h1 style={styles.brandTitle}>FIRESIDE</h1>
+          <p style={styles.brandSubtitle}>Ventures</p>
+          <h2 style={styles.setupTitle}>Room Booking System</h2>
+          <p style={styles.setupDescription}>Access our premium meeting rooms and book your space with ease.</p>
           <input
             type="text"
-            placeholder="Your name"
+            placeholder="Full Name"
             value={userNameInput}
             onChange={(e) => setUserNameInput(e.target.value)}
             onKeyPress={(e) => e.key === "Enter" && handleSetUserName()}
@@ -288,12 +181,8 @@ const RoomBookingSystem = () => {
             autoFocus
             maxLength="50"
           />
-          <button onClick={handleSetUserName} style={styles.primaryButton}>
-            Continue
-          </button>
-          <p style={styles.hint}>
-            Your name will be saved locally on this device
-          </p>
+          <button onClick={handleSetUserName} disabled={!userNameInput.trim()} style={{...styles.primaryButton, opacity: !userNameInput.trim() ? 0.5 : 1, cursor: !userNameInput.trim() ? "not-allowed" : "pointer"}}>Get Started</button>
+          {!userNameInput.trim() && <p style={{color: "#8B0000", fontSize: "12px", marginTop: "12px"}}>Please enter your full name to continue</p>}
         </div>
       </div>
     );
@@ -303,33 +192,31 @@ const RoomBookingSystem = () => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Fireside Ventures - Room Booking</h1>
-          <p style={styles.connectionStatus}>
-            {firebaseConnected ? "Connected" : "Connecting..."}
-          </p>
+        <div style={styles.headerLeft}>
+          <div style={styles.brandSection}>
+            <h1 style={styles.brandTitle}>FIRESIDE</h1>
+            <p style={styles.brandSubtext}>Meeting Rooms</p>
+          </div>
         </div>
         <div style={styles.userInfo}>
           <div style={styles.userBadge}>{userName}</div>
-          <button onClick={handleLogout} style={styles.logoutButton}>
-            Switch User
-          </button>
+          <button onClick={handleLogout} style={styles.logoutButton}>Switch</button>
         </div>
       </div>
 
       <div style={styles.mainContent}>
         {/* ===== BOOKING FORM ===== */}
         <div style={styles.bookingPanel}>
-          <h2 style={styles.sectionTitle}>Create Booking</h2>
+          <h2 style={styles.sectionTitle}>Reserve Your Space</h2>
 
           {error && (
             <div style={styles.errorMessage} role="alert">
-              {error}
+              <span style={styles.errorIcon}>⚠</span> {error}
             </div>
           )}
           {successMessage && (
             <div style={styles.successMessage} role="alert">
-              {successMessage}
+              <span style={styles.successIcon}>✓</span> {successMessage}
             </div>
           )}
 
@@ -343,17 +230,13 @@ const RoomBookingSystem = () => {
                   onClick={() => setSelectedRoom(room)}
                   style={{
                     ...styles.roomButton,
-                    ...(selectedRoom === room
-                      ? styles.roomButtonActive
-                      : styles.roomButtonInactive)
+                    ...(selectedRoom === room ? styles.roomButtonActive : {}),
+                    ...(!isRoomAvailable(room, selectedDate) ? styles.roomButtonUnavailable : styles.roomButtonInactive)
                   }}
                 >
                   {room}
                 </button>
               ))}
-            </div>
-            <div style={styles.roomInfo}>
-              Rooms for 4-8 people • Video conferencing included
             </div>
           </div>
 
@@ -373,30 +256,18 @@ const RoomBookingSystem = () => {
           <div style={styles.timeRow}>
             <div style={styles.formSection}>
               <label style={styles.label}>Start Time</label>
-              <select
-                value={selectedStartTime}
-                onChange={(e) => setSelectedStartTime(e.target.value)}
-                style={styles.select}
-              >
+              <select value={selectedStartTime} onChange={(e) => setSelectedStartTime(e.target.value)} style={styles.select}>
                 {getTimeSlots().map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
+                  <option key={slot} value={slot} disabled={isTimeSlotBooked(slot)}>{slot}{isTimeSlotBooked(slot) ? " (Booked)" : ""}</option>
                 ))}
               </select>
             </div>
 
             <div style={styles.formSection}>
               <label style={styles.label}>End Time</label>
-              <select
-                value={selectedEndTime}
-                onChange={(e) => setSelectedEndTime(e.target.value)}
-                style={styles.select}
-              >
-                {getTimeSlots().map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
+              <select value={selectedEndTime} onChange={(e) => setSelectedEndTime(e.target.value)} style={styles.select}>
+                {getTimeSlots().filter(slot => timeToMinutes(slot) > timeToMinutes(selectedStartTime)).map((slot) => (
+                  <option key={slot} value={slot} disabled={isTimeSlotBooked(slot)}>{slot}{isTimeSlotBooked(slot) ? " (Booked)" : ""}</option>
                 ))}
               </select>
             </div>
@@ -404,35 +275,34 @@ const RoomBookingSystem = () => {
 
           {/* Duration Display */}
           <div style={styles.durationInfo}>
-            Duration: {(timeToMinutes(selectedEndTime) - timeToMinutes(selectedStartTime)) / 60} hours
+            <span style={styles.durationLabel}>Duration</span>
+            <span style={styles.durationValue}>{(timeToMinutes(selectedEndTime) - timeToMinutes(selectedStartTime)) / 60} hour(s)</span>
           </div>
 
           {/* Book Button */}
           <button
             onClick={handleBookRoom}
-            disabled={loading || !firebaseConnected}
+            disabled={loading}
             style={{
               ...styles.primaryButton,
-              opacity: loading || !firebaseConnected ? 0.5 : 1,
-              cursor: loading || !firebaseConnected ? "not-allowed" : "pointer"
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? "not-allowed" : "pointer"
             }}
           >
-            {loading ? "Booking..." : "Book Room"}
+            {loading ? "Booking..." : "Confirm Booking"}
           </button>
         </div>
 
         {/* ===== BOOKINGS LIST ===== */}
         <div style={styles.bookingsPanel}>
           <h2 style={styles.sectionTitle}>
-            All Bookings ({bookings.length})
+            All Bookings <span style={styles.badgeCount}>{bookings.length}</span>
           </h2>
 
           {bookings.length === 0 ? (
             <div style={styles.emptyState}>
-              <p>No bookings yet</p>
-              <p style={styles.emptyStateHint}>
-                Be the first to book a room!
-              </p>
+              <p style={styles.emptyStateTitle}>No reservations yet</p>
+              <p style={styles.emptyStateHint}>Book a room to see it here</p>
             </div>
           ) : (
             <div style={styles.bookingsList}>
@@ -447,18 +317,16 @@ const RoomBookingSystem = () => {
                     key={booking.id}
                     style={{
                       ...styles.bookingItem,
-                      ...(isUpcoming
-                        ? styles.bookingItemUpcoming
-                        : styles.bookingItemPast)
+                      ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)
                     }}
                   >
                     <div style={styles.bookingDetails}>
                       <div style={styles.bookingRoom}>{booking.room}</div>
                       <div style={styles.bookingTime}>
-                        {booking.date} • {booking.startTime} – {booking.endTime}
+                        {formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}
                       </div>
                       <div style={styles.bookingBy}>
-                        by <strong>{booking.bookedBy}</strong>
+                        Booked by <strong>{booking.bookedBy}</strong>
                       </div>
                     </div>
                     {isUserBooking && isUpcoming && (
@@ -468,7 +336,7 @@ const RoomBookingSystem = () => {
                         style={styles.cancelButton}
                         title="Cancel this booking"
                       >
-                        X
+                        ✕
                       </button>
                     )}
                   </div>
@@ -486,35 +354,48 @@ const RoomBookingSystem = () => {
 const styles = {
   container: {
     minHeight: "100vh",
-    backgroundColor: "#111827",
-    color: "#F3F4F6",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    padding: "16px",
+    backgroundColor: "#f5f1f1",
+    color: "#2c2c2c",
+    fontFamily: "'Poppins', sans-serif",
+    padding: "12px",
+    width: "100%",
+    overflow: "hidden",
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: "32px",
+    alignItems: "center",
+    marginBottom: "20px",
     flexWrap: "wrap",
-    gap: "20px",
+    gap: "15px",
+    backgroundColor: "white",
+    padding: "20px",
+    borderRadius: "20px",
+    boxShadow: "0 2px 8px rgba(139, 0, 0, 0.08)",
   },
-  title: {
-    fontSize: "28px",
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "30px",
+  },
+  brandSection: {
+    borderRight: "2px solid #8B0000",
+    paddingRight: "30px",
+  },
+  brandTitle: {
+    fontSize: "24px",
     fontWeight: "700",
     margin: 0,
-    color: "#F3F4F6",
+    color: "#8B0000",
+    letterSpacing: "2px",
   },
-  subtitle: {
-    fontSize: "18px",
-    color: "#9CA3AF",
-    marginTop: "4px",
-  },
-  connectionStatus: {
+  brandSubtext: {
     fontSize: "12px",
-    color: "#10B981",
-    marginTop: "8px",
+    color: "#999",
+    marginTop: "4px",
     margin: 0,
+    letterSpacing: "1px",
+    textTransform: "uppercase",
   },
   userInfo: {
     display: "flex",
@@ -522,78 +403,92 @@ const styles = {
     gap: "12px",
   },
   userBadge: {
-    padding: "8px 16px",
-    backgroundColor: "#3B82F6",
+    padding: "10px 20px",
+    backgroundColor: "#8B0000",
     color: "#FFF",
-    borderRadius: "20px",
-    fontSize: "14px",
+    borderRadius: "25px",
+    fontSize: "13px",
     fontWeight: "600",
+    letterSpacing: "0.5px",
   },
   logoutButton: {
-    padding: "8px 16px",
-    backgroundColor: "#374151",
-    color: "#F3F4F6",
-    border: "none",
-    borderRadius: "6px",
+    padding: "10px 20px",
+    backgroundColor: "transparent",
+    color: "#8B0000",
+    border: "2px solid #8B0000",
+    borderRadius: "25px",
     cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "500",
+    fontSize: "13px",
+    fontWeight: "600",
+    transition: "all 0.3s ease",
   },
   mainContent: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "24px",
-    maxWidth: "1400px",
+    gap: "20px",
+    width: "100%",
+    maxWidth: "100%",
     margin: "0 auto",
+    overflow: "hidden",
   },
   bookingPanel: {
-    backgroundColor: "#1F2937",
-    padding: "24px",
-    borderRadius: "8px",
-    border: "1px solid #374151",
+    backgroundColor: "white",
+    padding: "20px",
+    borderRadius: "20px",
+    boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)",
   },
   bookingsPanel: {
-    backgroundColor: "#1F2937",
-    padding: "24px",
-    borderRadius: "8px",
-    border: "1px solid #374151",
+    backgroundColor: "white",
+    padding: "20px",
+    borderRadius: "20px",
+    boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)",
   },
   sectionTitle: {
     fontSize: "18px",
     fontWeight: "700",
-    marginBottom: "20px",
+    marginBottom: "16px",
     margin: 0,
-    color: "#F3F4F6",
+    color: "#2c2c2c",
+    letterSpacing: "0.5px",
+  },
+  badgeCount: {
+    backgroundColor: "#8B0000",
+    color: "white",
+    padding: "2px 10px",
+    borderRadius: "12px",
+    fontSize: "13px",
+    marginLeft: "8px",
   },
   formSection: {
-    marginBottom: "18px",
+    marginBottom: "16px",
   },
   label: {
     display: "block",
-    fontSize: "13px",
+    fontSize: "12px",
     fontWeight: "600",
-    marginBottom: "8px",
-    color: "#D1D5DB",
+    marginBottom: "10px",
+    color: "#8B0000",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "0.8px",
   },
   input: {
     width: "100%",
-    padding: "10px 12px",
-    backgroundColor: "#374151",
-    color: "#F3F4F6",
-    border: "1px solid #4B5563",
-    borderRadius: "6px",
+    padding: "12px 14px",
+    backgroundColor: "#f9f9f9",
+    color: "#2c2c2c",
+    border: "1px solid #e0e0e0",
+    borderRadius: "14px",
     fontSize: "14px",
     boxSizing: "border-box",
+    transition: "border-color 0.3s ease",
   },
   select: {
     width: "100%",
-    padding: "10px 12px",
-    backgroundColor: "#374151",
-    color: "#F3F4F6",
-    border: "1px solid #4B5563",
-    borderRadius: "6px",
+    padding: "12px 14px",
+    backgroundColor: "#f9f9f9",
+    color: "#2c2c2c",
+    border: "1px solid #e0e0e0",
+    borderRadius: "14px",
     fontSize: "14px",
     boxSizing: "border-box",
     cursor: "pointer",
@@ -601,149 +496,200 @@ const styles = {
   timeRow: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
+    gap: "16px",
   },
   roomButtons: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: "10px",
+    gridTemplateColumns: "repeat(5, 1fr)",
+    gap: "12px",
   },
   roomButton: {
-    padding: "12px",
-    border: "2px solid #4B5563",
-    borderRadius: "6px",
+    padding: "14px",
+    border: "2px solid #e0e0e0",
+    borderRadius: "14px",
     fontSize: "14px",
     fontWeight: "600",
     cursor: "pointer",
-    transition: "all 0.2s ease",
+    transition: "all 0.3s ease",
+    backgroundColor: "white",
   },
   roomButtonActive: {
-    backgroundColor: "#3B82F6",
+    backgroundColor: "#8B0000",
     color: "#FFF",
-    borderColor: "#3B82F6",
+    borderColor: "#8B0000",
   },
   roomButtonInactive: {
-    backgroundColor: "transparent",
-    color: "#D1D5DB",
+    backgroundColor: "white",
+    color: "#666",
+    borderColor: "#e0e0e0",
   },
-  roomInfo: {
-    fontSize: "12px",
-    color: "#9CA3AF",
-    marginTop: "8px",
+  roomButtonUnavailable: {
+    backgroundColor: "#4a4a4a",
+    color: "#666",
+    borderColor: "#4a4a4a",
+    cursor: "not-allowed",
+    opacity: 0.6,
   },
   durationInfo: {
-    fontSize: "12px",
-    color: "#9CA3AF",
-    marginBottom: "16px",
+    fontSize: "13px",
+    color: "#666",
+    marginBottom: "24px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px",
+    backgroundColor: "#f9f9f9",
+    borderRadius: "14px",
+  },
+  durationLabel: {
+    fontWeight: "600",
+    color: "#8B0000",
+  },
+  durationValue: {
+    fontWeight: "700",
+    color: "#2c2c2c",
   },
   primaryButton: {
     width: "100%",
-    padding: "12px",
-    backgroundColor: "#3B82F6",
+    padding: "14px",
+    backgroundColor: "#8B0000",
     color: "#FFF",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "14px",
     fontSize: "15px",
     fontWeight: "600",
     cursor: "pointer",
-    transition: "background-color 0.2s ease",
+    transition: "background-color 0.3s ease",
+    letterSpacing: "0.5px",
   },
   cancelButton: {
     padding: "8px 12px",
-    backgroundColor: "#EF4444",
+    backgroundColor: "#8B0000",
     color: "#FFF",
     border: "none",
     borderRadius: "6px",
     cursor: "pointer",
-    fontSize: "18px",
+    fontSize: "16px",
     fontWeight: "400",
+    transition: "background-color 0.3s ease",
   },
   errorMessage: {
-    backgroundColor: "#7F1D1D",
-    color: "#FCA5A5",
-    padding: "12px",
-    borderRadius: "6px",
-    marginBottom: "16px",
+    backgroundColor: "#fff5f5",
+    color: "#8B0000",
+    padding: "14px",
+    borderRadius: "14px",
+    marginBottom: "20px",
     fontSize: "14px",
-    border: "1px solid #DC2626",
+    border: "1px solid #ffcccb",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  },
+  errorIcon: {
+    fontSize: "18px",
   },
   successMessage: {
-    backgroundColor: "#065F46",
-    color: "#86EFAC",
-    padding: "12px",
-    borderRadius: "6px",
-    marginBottom: "16px",
+    backgroundColor: "#f0fdf4",
+    color: "#16a34a",
+    padding: "14px",
+    borderRadius: "14px",
+    marginBottom: "20px",
     fontSize: "14px",
-    border: "1px solid #10B981",
+    border: "1px solid #bbf7d0",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  },
+  successIcon: {
+    fontSize: "18px",
   },
   bookingsList: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    maxHeight: "calc(100vh - 300px)",
+    gap: "14px",
+    maxHeight: "calc(100vh - 400px)",
     overflowY: "auto",
   },
   bookingItem: {
-    padding: "14px",
-    borderRadius: "6px",
+    padding: "18px",
+    borderRadius: "14px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    border: "1px solid #4B5563",
+    border: "2px solid #8B0000",
+    transition: "all 0.3s ease",
+    backgroundColor: "#fafafa",
   },
   bookingItemUpcoming: {
-    backgroundColor: "#374151",
+    backgroundColor: "#ffffff",
+    borderColor: "#8B0000",
   },
   bookingItemPast: {
-    backgroundColor: "#2D3748",
-    opacity: 0.6,
+    backgroundColor: "#f9f9f9",
+    opacity: 0.7,
+    borderColor: "#ddd",
   },
   bookingDetails: {
     flex: 1,
   },
   bookingRoom: {
-    fontSize: "15px",
+    fontSize: "16px",
     fontWeight: "700",
-    color: "#3B82F6",
-    marginBottom: "4px",
+    color: "#8B0000",
+    marginBottom: "8px",
+    letterSpacing: "0.5px",
   },
   bookingTime: {
-    fontSize: "13px",
-    color: "#D1D5DB",
-    marginBottom: "4px",
+    fontSize: "14px",
+    color: "#2c2c2c",
+    marginBottom: "8px",
+    fontWeight: "600",
   },
   bookingBy: {
-    fontSize: "12px",
-    color: "#9CA3AF",
+    fontSize: "13px",
+    color: "#666",
+    fontWeight: "600",
   },
   emptyState: {
     textAlign: "center",
-    color: "#9CA3AF",
-    padding: "40px 20px",
+    color: "#999",
+    padding: "50px 20px",
+  },
+  emptyStateTitle: {
+    fontSize: "16px",
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: "8px",
   },
   emptyStateHint: {
-    fontSize: "12px",
+    fontSize: "13px",
     marginTop: "8px",
   },
   setupCard: {
-    maxWidth: "400px",
-    margin: "80px auto",
-    backgroundColor: "#1F2937",
-    padding: "40px",
-    borderRadius: "8px",
-    border: "1px solid #374151",
+    maxWidth: "450px",
+    margin: "100px auto",
+    backgroundColor: "white",
+    padding: "50px",
+    borderRadius: "20px",
+    boxShadow: "0 4px 20px rgba(139, 0, 0, 0.12)",
     textAlign: "center",
+  },
+  setupTitle: {
+    fontSize: "24px",
+    fontWeight: "700",
+    marginBottom: "16px",
+    color: "#2c2c2c",
   },
   setupDescription: {
     fontSize: "15px",
-    color: "#D1D5DB",
-    marginBottom: "24px",
+    color: "#666",
+    marginBottom: "30px",
+    lineHeight: "1.6",
   },
-  hint: {
-    fontSize: "12px",
+  brandSubtitle: {
+    fontSize: "18px",
     color: "#9CA3AF",
-    marginTop: "16px",
-    margin: 0,
+    marginTop: "4px",
   },
 };
 
