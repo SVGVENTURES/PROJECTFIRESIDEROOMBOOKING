@@ -9,15 +9,42 @@ const RoomBookingSystem = () => {
   const [userNameInput, setUserNameInput] = useState("");
   const [bookings, setBookings] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
-  const [selectedSlots, setSelectedSlots] = useState({}); // {roomName: [slotIndices]}
+  const [selectedSlots, setSelectedSlots] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [viewMode, setViewMode] = useState("booking"); // "booking" or "viewBookings"
+  const [viewMode, setViewMode] = useState("booking");
   const [editingBooking, setEditingBooking] = useState(null);
   const [editDate, setEditDate] = useState("");
   const [editSlots, setEditSlots] = useState({});
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Add animations on mount
+  useEffect(() => {
+    const styleSheet = document.createElement("style");
+    styleSheet.textContent = `
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes bounce {
+        0%, 100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(8px);
+        }
+      }
+    `;
+    document.head.appendChild(styleSheet);
+  }, []);
 
   // ============= HELPER FUNCTIONS =============
   function getTodayDateString() {
@@ -53,27 +80,21 @@ const RoomBookingSystem = () => {
 
   function isSlotBooked(room, date, slotIndex) {
     const slots = getTimeSlots();
-    
     return bookings.some(booking => {
       if (booking.room !== room || booking.date !== date) return false;
-      
       const bookingStartIndex = slots.indexOf(booking.startTime);
       const bookingEndIndex = slots.indexOf(booking.endTime);
-      
       return slotIndex >= bookingStartIndex && slotIndex < bookingEndIndex;
     });
   }
 
   function isSlotBookedExcept(room, date, slotIndex, exceptBookingId) {
     const slots = getTimeSlots();
-    
     return bookings.some(booking => {
-      if (booking.id === exceptBookingId) return false; // Exclude the booking being edited
+      if (booking.id === exceptBookingId) return false;
       if (booking.room !== room || booking.date !== date) return false;
-      
       const bookingStartIndex = slots.indexOf(booking.startTime);
       const bookingEndIndex = slots.indexOf(booking.endTime);
-      
       return slotIndex >= bookingStartIndex && slotIndex < bookingEndIndex;
     });
   }
@@ -85,23 +106,27 @@ const RoomBookingSystem = () => {
   function getConsecutiveSlots(room, selectedSlotIndices) {
     const sorted = [...selectedSlotIndices].sort((a, b) => a - b);
     if (sorted.length === 0) return null;
-    
     for (let i = 1; i < sorted.length; i++) {
       if (sorted[i] !== sorted[i - 1] + 1) {
-        return null; // Not consecutive
+        return null;
       }
     }
     return sorted;
   }
 
   function changeDate(days) {
-    const currentDate = new Date(selectedDate + 'T00:00:00');
-    currentDate.setDate(currentDate.getDate() + days);
-    const newDateString = currentDate.toISOString().split('T')[0];
-    
-    if (new Date(newDateString) >= new Date(getTodayDateString())) {
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + days);
+
+    const newYear = date.getFullYear();
+    const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+    const newDay = String(date.getDate()).padStart(2, '0');
+    const newDateString = `${newYear}-${newMonth}-${newDay}`;
+
+    if (newDateString >= getTodayDateString()) {
       setSelectedDate(newDateString);
-      setSelectedSlots({}); // Reset selections on date change
+      setSelectedSlots({});
       setError("");
       setSuccessMessage("");
     }
@@ -135,18 +160,15 @@ const RoomBookingSystem = () => {
       if (!updatedSlots[room]) {
         updatedSlots[room] = [];
       }
-
       const index = updatedSlots[room].indexOf(slotIndex);
       if (index > -1) {
         updatedSlots[room].splice(index, 1);
       } else {
         updatedSlots[room].push(slotIndex);
       }
-
       if (updatedSlots[room].length === 0) {
         delete updatedSlots[room];
       }
-
       return updatedSlots;
     });
   }
@@ -157,18 +179,15 @@ const RoomBookingSystem = () => {
       if (!updatedSlots[room]) {
         updatedSlots[room] = [];
       }
-
       const index = updatedSlots[room].indexOf(slotIndex);
       if (index > -1) {
         updatedSlots[room].splice(index, 1);
       } else {
         updatedSlots[room].push(slotIndex);
       }
-
       if (updatedSlots[room].length === 0) {
         delete updatedSlots[room];
       }
-
       return updatedSlots;
     });
   }
@@ -192,7 +211,7 @@ const RoomBookingSystem = () => {
 
     for (const room of roomsWithSlots) {
       const slotIndices = getConsecutiveSlots(room, selectedSlots[room]);
-      
+
       if (!slotIndices) {
         setError(`${room}: Please select consecutive time slots only`);
         return;
@@ -207,12 +226,11 @@ const RoomBookingSystem = () => {
         const bookingEndIndex = slots.indexOf(booking.endTime);
         const newStartIndex = slots.indexOf(startTime);
         const newEndIndex = slots.indexOf(endTime);
-        
         return !(newEndIndex <= bookingStartIndex || newStartIndex >= bookingEndIndex);
       });
 
       if (hasConflict) {
-        const conflictBooking = bookings.find(b => 
+        const conflictBooking = bookings.find(b =>
           b.room === room && b.date === selectedDate &&
           slotIndices.some(idx => isSlotBooked(room, selectedDate, idx))
         );
@@ -286,7 +304,7 @@ const RoomBookingSystem = () => {
 
     const room = roomsWithSlots[0];
     const slotIndices = getConsecutiveSlots(room, editSlots[room]);
-    
+
     if (!slotIndices) {
       setError(`${room}: Please select consecutive time slots only`);
       return;
@@ -294,16 +312,14 @@ const RoomBookingSystem = () => {
 
     const { startTime, endTime } = formatTimeRange(slotIndices[0], slotIndices.length);
 
-    // Check for conflicts (excluding the current booking)
     const hasConflict = bookings.some(booking => {
-      if (booking.id === editingBooking.id) return false; // Exclude current booking
+      if (booking.id === editingBooking.id) return false;
       if (booking.room !== room || booking.date !== editDate) return false;
       const slots = getTimeSlots();
       const bookingStartIndex = slots.indexOf(booking.startTime);
       const bookingEndIndex = slots.indexOf(booking.endTime);
       const newStartIndex = slots.indexOf(startTime);
       const newEndIndex = slots.indexOf(endTime);
-      
       return !(newEndIndex <= bookingStartIndex || newStartIndex >= bookingEndIndex);
     });
 
@@ -312,7 +328,6 @@ const RoomBookingSystem = () => {
       return;
     }
 
-    // Update the booking
     const updatedBookings = bookings.map(b => {
       if (b.id === editingBooking.id) {
         return {
@@ -392,6 +407,7 @@ const RoomBookingSystem = () => {
   // ============= RENDER: BOOKING VIEW =============
   if (viewMode === "booking") {
     const timeSlots = getTimeSlots();
+    const hasSelectedSlots = Object.keys(selectedSlots).length > 0;
 
     return (
       <div style={styles.container}>
@@ -404,11 +420,7 @@ const RoomBookingSystem = () => {
           </div>
           <div style={styles.userInfo}>
             <div style={styles.userBadge}>{userName}</div>
-            <button 
-              onClick={() => setViewMode("viewBookings")} 
-              style={styles.viewBookingsButton}
-              title="View all bookings"
-            >
+            <button onClick={() => setViewMode("viewBookings")} style={styles.viewBookingsButton}>
               View Bookings →
             </button>
             <button onClick={handleLogout} style={styles.switchButton}>Switch</button>
@@ -427,26 +439,18 @@ const RoomBookingSystem = () => {
             </div>
           )}
 
-          {/* Date Navigation */}
           <div style={styles.dateNavigation}>
             <h2 style={styles.dateDisplay}>{formatDateString(selectedDate)}</h2>
             <div style={styles.dateButtonGroup}>
-              <button 
-                onClick={() => changeDate(1)}
-                style={styles.dateButton}
-              >
+              <button onClick={() => changeDate(1)} style={styles.dateButton}>
                 Next →
               </button>
-              <button 
-                onClick={() => setShowDatePicker(!showDatePicker)}
-                style={styles.dateButton}
-              >
+              <button onClick={() => setShowDatePicker(!showDatePicker)} style={styles.dateButton}>
                 📅 Custom Date
               </button>
             </div>
           </div>
 
-          {/* Date Picker */}
           {showDatePicker && (
             <div style={styles.datePickerContainer}>
               <input
@@ -456,76 +460,72 @@ const RoomBookingSystem = () => {
                 min={getTodayDateString()}
                 style={styles.datePickerInput}
               />
-              <button 
-                onClick={() => setShowDatePicker(false)}
-                style={styles.datePickerClose}
-              >
+              <button onClick={() => setShowDatePicker(false)} style={styles.datePickerClose}>
                 ✕
               </button>
             </div>
           )}
 
-          {/* Time Slots Grid */}
           <div style={styles.gridWrapper}>
-            <div style={styles.gridNote}>
-              1 slot = 30 minutes
-            </div>
+            <div style={styles.gridNote}>1 slot = 30 minutes</div>
             <div style={styles.gridContainer}>
-              {/* Header Row - Room Names */}
               <div style={styles.gridHeader}>
                 <div style={styles.timeColumnHeader}>Time</div>
                 {ROOMS.map(room => (
-                  <div key={room} style={styles.roomColumnHeader}>
-                    {room}
-                  </div>
+                  <div key={room} style={styles.roomColumnHeader}>{room}</div>
                 ))}
               </div>
 
-              {/* Time Slot Rows */}
-              {timeSlots.map((slot, index) => {
-                return (
-                  <div key={slot} style={styles.gridRow}>
-                    <div style={styles.timeCell}>{slot}</div>
-                    {ROOMS.map(room => {
-                      const isSelected = selectedSlots[room] && selectedSlots[room].includes(index);
-                      const isBooked = isSlotBooked(room, selectedDate, index);
-                      
-                      return (
-                        <div
-                          key={`${room}-${slot}`}
-                          onClick={() => !isBooked && handleSlotClick(room, index)}
-                          style={{
-                            ...styles.slotCell,
-                            ...(isBooked ? styles.slotBooked : {}),
-                            ...(isSelected ? styles.slotSelected : {}),
-                            ...(isBooked ? {} : styles.slotClickable)
-                          }}
-                          title={isBooked ? "This slot is booked" : "Click to select"}
-                        >
-                          {isSelected && <span style={styles.checkmark}>✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+              {timeSlots.map((slot, index) => (
+                <div key={slot} style={styles.gridRow}>
+                  <div style={styles.timeCell}>{slot}</div>
+                  {ROOMS.map(room => {
+                    const isSelected = selectedSlots[room] && selectedSlots[room].includes(index);
+                    const isBooked = isSlotBooked(room, selectedDate, index);
+
+                    return (
+                      <div
+                        key={`${room}-${slot}`}
+                        onClick={() => !isBooked && handleSlotClick(room, index)}
+                        style={{
+                          ...styles.slotCell,
+                          ...(isBooked ? styles.slotBooked : {}),
+                          ...(isSelected ? styles.slotSelected : {}),
+                          ...(isBooked ? {} : styles.slotClickable)
+                        }}
+                        title={isBooked ? "This slot is booked" : "Click to select"}
+                      >
+                        {isSelected && <span style={styles.checkmark}>✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Book Button - Sticky */}
           <div style={styles.bookButtonContainer}>
             <button
               onClick={handleBookRoom}
-              disabled={loading || Object.keys(selectedSlots).length === 0}
+              disabled={loading || !hasSelectedSlots}
               style={{
                 ...styles.primaryButton,
-                opacity: (loading || Object.keys(selectedSlots).length === 0) ? 0.6 : 1,
-                cursor: (loading || Object.keys(selectedSlots).length === 0) ? "not-allowed" : "pointer"
+                opacity: (loading || !hasSelectedSlots) ? 0.6 : 1,
+                cursor: (loading || !hasSelectedSlots) ? "not-allowed" : "pointer"
               }}
             >
               {loading ? "Booking..." : `Confirm Booking (${Object.values(selectedSlots).reduce((sum, arr) => sum + arr.length, 0)} slots selected)`}
             </button>
           </div>
+
+          {hasSelectedSlots && (
+            <div style={styles.scrollPrompt}>
+              <div style={styles.scrollPromptContent}>
+                <div style={styles.scrollArrow}>↓</div>
+                <div style={styles.scrollText}>Scroll down to confirm booking</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -547,10 +547,7 @@ const RoomBookingSystem = () => {
           </div>
           <div style={styles.userInfo}>
             <div style={styles.userBadge}>{userName}</div>
-            <button 
-              onClick={() => { setViewMode("booking"); setError(""); setSuccessMessage(""); }}
-              style={styles.viewBookingsButton}
-            >
+            <button onClick={() => { setViewMode("booking"); setError(""); setSuccessMessage(""); }} style={styles.viewBookingsButton}>
               ← Back to Booking
             </button>
             <button onClick={handleLogout} style={styles.switchButton}>Switch</button>
@@ -569,7 +566,6 @@ const RoomBookingSystem = () => {
             </div>
           )}
 
-          {/* Edit Modal */}
           {editingBooking && (
             <div style={styles.modal}>
               <div style={styles.modalContent}>
@@ -617,7 +613,7 @@ const RoomBookingSystem = () => {
                       {getTimeSlots().map((slot, index) => {
                         const isSelected = editSlots[editingBooking.room] && editSlots[editingBooking.room].includes(index);
                         const isBooked = isSlotBookedExcept(editingBooking.room, editDate, index, editingBooking.id);
-                        
+
                         return (
                           <div key={slot} style={styles.editGridRow}>
                             <div style={styles.timeCell}>{slot}</div>
@@ -665,37 +661,15 @@ const RoomBookingSystem = () => {
                 const isUpcoming = bookingDate >= today;
 
                 return (
-                  <div
-                    key={booking.id}
-                    style={{
-                      ...styles.bookingItem,
-                      ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)
-                    }}
-                  >
+                  <div key={booking.id} style={{...styles.bookingItem, ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)}}>
                     <div style={styles.bookingDetails}>
                       <div style={styles.bookingRoom}>{booking.room}</div>
-                      <div style={styles.bookingTime}>
-                        {formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}
-                      </div>
-                      <div style={styles.bookingBy}>
-                        Booked by <strong>{booking.bookedBy}</strong>
-                      </div>
+                      <div style={styles.bookingTime}>{formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}</div>
+                      <div style={styles.bookingBy}>Booked by <strong>{booking.bookedBy}</strong></div>
                     </div>
                     <div style={styles.bookingActions}>
-                      <button
-                        onClick={() => handleStartEdit(booking)}
-                        style={styles.editButton}
-                        title="Edit this booking"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBooking(booking)}
-                        style={styles.cancelButton}
-                        title="Delete this booking"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => handleStartEdit(booking)} style={styles.editButton} title="Edit this booking">✎</button>
+                      <button onClick={() => handleDeleteBooking(booking)} style={styles.cancelButton} title="Delete this booking">✕</button>
                     </div>
                   </div>
                 );
@@ -720,21 +694,11 @@ const RoomBookingSystem = () => {
                 const isUpcoming = bookingDate >= today;
 
                 return (
-                  <div
-                    key={booking.id}
-                    style={{
-                      ...styles.bookingItem,
-                      ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)
-                    }}
-                  >
+                  <div key={booking.id} style={{...styles.bookingItem, ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)}}>
                     <div style={styles.bookingDetails}>
                       <div style={styles.bookingRoom}>{booking.room}</div>
-                      <div style={styles.bookingTime}>
-                        {formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}
-                      </div>
-                      <div style={styles.bookingBy}>
-                        Booked by <strong>{booking.bookedBy}</strong>
-                      </div>
+                      <div style={styles.bookingTime}>{formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}</div>
+                      <div style={styles.bookingBy}>Booked by <strong>{booking.bookedBy}</strong></div>
                     </div>
                   </div>
                 );
@@ -749,548 +713,81 @@ const RoomBookingSystem = () => {
 
 // ============= STYLES =============
 const styles = {
-  container: {
-    minHeight: "100vh",
-    backgroundColor: "#f5f1f1",
-    color: "#2c2c2c",
-    fontFamily: "'Poppins', sans-serif",
-    padding: "12px",
-    width: "100%",
-    overflow: "auto",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-    flexWrap: "wrap",
-    gap: "15px",
-    backgroundColor: "white",
-    padding: "20px",
-    borderRadius: "20px",
-    boxShadow: "0 2px 8px rgba(139, 0, 0, 0.08)",
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: "30px",
-  },
-  brandSection: {
-    borderRight: "2px solid #8B0000",
-    paddingRight: "30px",
-  },
-  brandTitle: {
-    fontSize: "24px",
-    fontWeight: "700",
-    margin: 0,
-    color: "#8B0000",
-    letterSpacing: "2px",
-  },
-  brandSubtext: {
-    fontSize: "12px",
-    color: "#999",
-    marginTop: "4px",
-    margin: 0,
-    letterSpacing: "1px",
-    textTransform: "uppercase",
-  },
-  userInfo: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  userBadge: {
-    padding: "10px 20px",
-    backgroundColor: "white",
-    color: "#8B0000",
-    borderRadius: "25px",
-    fontSize: "13px",
-    fontWeight: "600",
-    letterSpacing: "0.5px",
-    border: "2px solid #8B0000",
-  },
-  logoutButton: {
-    padding: "10px 20px",
-    backgroundColor: "transparent",
-    color: "#8B0000",
-    border: "2px solid #8B0000",
-    borderRadius: "25px",
-    cursor: "pointer",
-    fontSize: "13px",
-    fontWeight: "600",
-    transition: "all 0.3s ease",
-  },
-  viewBookingsButton: {
-    padding: "10px 20px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "2px solid #8B0000",
-    borderRadius: "25px",
-    cursor: "pointer",
-    fontSize: "13px",
-    fontWeight: "600",
-    transition: "all 0.3s ease",
-  },
-  switchButton: {
-    padding: "10px 20px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "2px solid #8B0000",
-    borderRadius: "25px",
-    cursor: "pointer",
-    fontSize: "13px",
-    fontWeight: "600",
-    transition: "all 0.3s ease",
-  },
-  bookingContainer: {
-    backgroundColor: "white",
-    padding: "30px",
-    borderRadius: "20px",
-    boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)",
-    maxWidth: "1400px",
-    margin: "0 auto",
-  },
-  dateNavigation: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "30px",
-    marginBottom: "30px",
-    flexWrap: "wrap",
-  },
-  dateDisplay: {
-    fontSize: "20px",
-    fontWeight: "700",
-    color: "#8B0000",
-    margin: 0,
-    minWidth: "200px",
-  },
-  dateButtonGroup: {
-    display: "flex",
-    gap: "10px",
-  },
-  dateButton: {
-    padding: "10px 20px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "none",
-    borderRadius: "14px",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "600",
-    transition: "all 0.3s ease",
-  },
-  datePickerContainer: {
-    display: "flex",
-    gap: "10px",
-    marginBottom: "20px",
-    padding: "15px",
-    backgroundColor: "#f9f9f9",
-    borderRadius: "14px",
-    alignItems: "center",
-  },
-  datePickerInput: {
-    padding: "10px 15px",
-    border: "1px solid #e0e0e0",
-    borderRadius: "14px",
-    fontSize: "14px",
-    cursor: "pointer",
-    flex: 1,
-  },
-  datePickerClose: {
-    padding: "8px 12px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "16px",
-  },
-  gridWrapper: {
-    position: "relative",
-    marginBottom: "30px",
-  },
-  gridNote: {
-    fontSize: "12px",
-    color: "#999",
-    marginBottom: "15px",
-    textAlign: "right",
-    paddingRight: "10px",
-  },
-  gridContainer: {
-    overflowX: "auto",
-    border: "1px solid #e0e0e0",
-    borderRadius: "14px",
-  },
-  gridHeader: {
-    display: "grid",
-    gridTemplateColumns: `100px repeat(5, 1fr)`,
-    gap: "0",
-    backgroundColor: "#8B0000",
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-  },
-  timeColumnHeader: {
-    padding: "15px",
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: "13px",
-    textAlign: "center",
-    borderRight: "1px solid rgba(255,255,255,0.2)",
-    textTransform: "uppercase",
-    letterSpacing: "0.8px",
-  },
-  roomColumnHeader: {
-    padding: "15px",
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: "14px",
-    textAlign: "center",
-    borderRight: "1px solid rgba(255,255,255,0.2)",
-  },
-  gridRow: {
-    display: "grid",
-    gridTemplateColumns: `100px repeat(5, 1fr)`,
-    gap: "0",
-    borderBottom: "1px solid #e0e0e0",
-  },
-  timeCell: {
-    padding: "12px 15px",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#8B0000",
-    backgroundColor: "#f9f9f9",
-    borderRight: "1px solid #e0e0e0",
-    textAlign: "center",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slotCell: {
-    padding: "15px",
-    minHeight: "60px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRight: "1px solid #e0e0e0",
-    position: "relative",
-    backgroundColor: "#ffffff",
-  },
-  slotClickable: {
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
-  slotSelected: {
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    fontWeight: "700",
-  },
-  slotBooked: {
-    backgroundColor: "#d0d0d0",
-    color: "#666",
-    cursor: "not-allowed",
-    opacity: 0.7,
-  },
-  checkmark: {
-    fontSize: "20px",
-    fontWeight: "700",
-  },
-  bookButtonContainer: {
-    display: "flex",
-    justifyContent: "center",
-    marginTop: "20px",
-    position: "sticky",
-    bottom: 0,
-    backgroundColor: "white",
-    padding: "20px 0",
-    borderTop: "1px solid #e0e0e0",
-    zIndex: 100,
-  },
-  primaryButton: {
-    padding: "14px 40px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "none",
-    borderRadius: "14px",
-    fontSize: "15px",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "background-color 0.3s ease",
-    letterSpacing: "0.5px",
-    minWidth: "300px",
-  },
-  secondaryButton: {
-    padding: "12px 30px",
-    backgroundColor: "transparent",
-    color: "#8B0000",
-    border: "2px solid #8B0000",
-    borderRadius: "14px",
-    fontSize: "14px",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-  },
-  errorMessage: {
-    backgroundColor: "#fff5f5",
-    color: "#8B0000",
-    padding: "14px",
-    borderRadius: "14px",
-    marginBottom: "20px",
-    fontSize: "14px",
-    border: "1px solid #ffcccb",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  errorIcon: {
-    fontSize: "18px",
-  },
-  successMessage: {
-    backgroundColor: "#f0fdf4",
-    color: "#16a34a",
-    padding: "14px",
-    borderRadius: "14px",
-    marginBottom: "20px",
-    fontSize: "14px",
-    border: "1px solid #bbf7d0",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  successIcon: {
-    fontSize: "18px",
-  },
-  bookingsViewContainer: {
-    backgroundColor: "white",
-    padding: "30px",
-    borderRadius: "20px",
-    boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)",
-    maxWidth: "900px",
-    margin: "0 auto",
-  },
-  bookingsTabs: {
-    marginBottom: "20px",
-    paddingBottom: "15px",
-    borderBottom: "2px solid #e0e0e0",
-  },
-  bookingsTitle: {
-    fontSize: "18px",
-    fontWeight: "700",
-    margin: 0,
-    color: "#2c2c2c",
-    letterSpacing: "0.5px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  badgeCount: {
-    backgroundColor: "#8B0000",
-    color: "white",
-    padding: "2px 10px",
-    borderRadius: "12px",
-    fontSize: "13px",
-  },
-  bookingsList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px",
-    marginBottom: "30px",
-  },
-  bookingItem: {
-    padding: "18px",
-    borderRadius: "14px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    border: "2px solid #8B0000",
-    transition: "all 0.3s ease",
-    backgroundColor: "#fafafa",
-  },
-  bookingItemUpcoming: {
-    backgroundColor: "#ffffff",
-    borderColor: "#8B0000",
-  },
-  bookingItemPast: {
-    backgroundColor: "#f9f9f9",
-    opacity: 0.7,
-    borderColor: "#ddd",
-  },
-  bookingDetails: {
-    flex: 1,
-  },
-  bookingRoom: {
-    fontSize: "16px",
-    fontWeight: "700",
-    color: "#8B0000",
-    marginBottom: "8px",
-    letterSpacing: "0.5px",
-  },
-  bookingTime: {
-    fontSize: "14px",
-    color: "#2c2c2c",
-    marginBottom: "8px",
-    fontWeight: "600",
-  },
-  bookingBy: {
-    fontSize: "13px",
-    color: "#666",
-    fontWeight: "600",
-  },
-  bookingActions: {
-    display: "flex",
-    gap: "8px",
-  },
-  editButton: {
-    padding: "8px 12px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "16px",
-    fontWeight: "400",
-    transition: "background-color 0.3s ease",
-  },
-  cancelButton: {
-    padding: "8px 12px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "16px",
-    fontWeight: "400",
-    transition: "background-color 0.3s ease",
-  },
-  modal: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1000,
-    padding: "20px",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderRadius: "20px",
-    maxWidth: "600px",
-    maxHeight: "90vh",
-    overflow: "auto",
-    width: "100%",
-    boxShadow: "0 4px 20px rgba(139, 0, 0, 0.2)",
-  },
-  modalHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "20px",
-    borderBottom: "1px solid #e0e0e0",
-  },
-  modalClose: {
-    padding: "8px 12px",
-    backgroundColor: "transparent",
-    color: "#8B0000",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "20px",
-    fontWeight: "400",
-  },
-  editForm: {
-    padding: "20px",
-  },
-  formGroup: {
-    marginBottom: "20px",
-  },
-  editLabel: {
-    display: "block",
-    fontSize: "12px",
-    fontWeight: "600",
-    marginBottom: "10px",
-    color: "#8B0000",
-    textTransform: "uppercase",
-    letterSpacing: "0.8px",
-  },
-  editGridContainer: {
-    border: "1px solid #e0e0e0",
-    borderRadius: "14px",
-    maxHeight: "400px",
-    overflowY: "auto",
-  },
-  editGridHeader: {
-    display: "grid",
-    gridTemplateColumns: "100px 1fr",
-    gap: "0",
-    backgroundColor: "#8B0000",
-    position: "sticky",
-    top: 0,
-  },
-  editGridRow: {
-    display: "grid",
-    gridTemplateColumns: "100px 1fr",
-    gap: "0",
-    borderBottom: "1px solid #e0e0e0",
-  },
-  modalButtons: {
-    display: "flex",
-    gap: "10px",
-    justifyContent: "flex-end",
-    marginTop: "20px",
-    paddingTop: "20px",
-    borderTop: "1px solid #e0e0e0",
-  },
-  emptyState: {
-    textAlign: "center",
-    color: "#999",
-    padding: "50px 20px",
-  },
-  emptyStateTitle: {
-    fontSize: "16px",
-    fontWeight: "600",
-    color: "#666",
-    marginBottom: "8px",
-  },
-  emptyStateHint: {
-    fontSize: "13px",
-    marginTop: "8px",
-  },
-  setupCard: {
-    maxWidth: "450px",
-    margin: "100px auto",
-    backgroundColor: "white",
-    padding: "50px",
-    borderRadius: "20px",
-    boxShadow: "0 4px 20px rgba(139, 0, 0, 0.12)",
-    textAlign: "center",
-  },
-  setupTitle: {
-    fontSize: "24px",
-    fontWeight: "700",
-    marginBottom: "30px",
-    color: "#2c2c2c",
-  },
-  brandSubtitle: {
-    fontSize: "18px",
-    color: "#9CA3AF",
-    marginTop: "4px",
-  },
-  input: {
-    width: "100%",
-    padding: "12px 14px",
-    backgroundColor: "#f9f9f9",
-    color: "#2c2c2c",
-    border: "1px solid #e0e0e0",
-    borderRadius: "14px",
-    fontSize: "14px",
-    boxSizing: "border-box",
-    marginBottom: "15px",
-    transition: "border-color 0.3s ease",
-  },
+  container: { minHeight: "100vh", backgroundColor: "#f5f1f1", color: "#2c2c2c", fontFamily: "'Poppins', sans-serif", padding: "12px", width: "100%", overflow: "auto" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "15px", backgroundColor: "white", padding: "20px", borderRadius: "20px", boxShadow: "0 2px 8px rgba(139, 0, 0, 0.08)" },
+  headerLeft: { display: "flex", alignItems: "center", gap: "30px" },
+  brandSection: { borderRight: "2px solid #8B0000", paddingRight: "30px" },
+  brandTitle: { fontSize: "24px", fontWeight: "700", margin: 0, color: "#8B0000", letterSpacing: "2px" },
+  brandSubtext: { fontSize: "12px", color: "#999", marginTop: "4px", margin: 0, letterSpacing: "1px", textTransform: "uppercase" },
+  userInfo: { display: "flex", alignItems: "center", gap: "12px" },
+  userBadge: { padding: "10px 20px", backgroundColor: "white", color: "#8B0000", borderRadius: "25px", fontSize: "13px", fontWeight: "600", letterSpacing: "0.5px", border: "2px solid #8B0000" },
+  viewBookingsButton: { padding: "10px 20px", backgroundColor: "#8B0000", color: "#FFF", border: "2px solid #8B0000", borderRadius: "25px", cursor: "pointer", fontSize: "13px", fontWeight: "600", transition: "all 0.3s ease" },
+  switchButton: { padding: "10px 20px", backgroundColor: "#8B0000", color: "#FFF", border: "2px solid #8B0000", borderRadius: "25px", cursor: "pointer", fontSize: "13px", fontWeight: "600", transition: "all 0.3s ease" },
+  bookingContainer: { backgroundColor: "white", padding: "30px", borderRadius: "20px", boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)", maxWidth: "1400px", margin: "0 auto" },
+  dateNavigation: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "30px", marginBottom: "30px", flexWrap: "wrap" },
+  dateDisplay: { fontSize: "20px", fontWeight: "700", color: "#8B0000", margin: 0, minWidth: "200px" },
+  dateButtonGroup: { display: "flex", gap: "10px" },
+  dateButton: { padding: "10px 20px", backgroundColor: "#8B0000", color: "#FFF", border: "none", borderRadius: "14px", cursor: "pointer", fontSize: "14px", fontWeight: "600", transition: "all 0.3s ease" },
+  datePickerContainer: { display: "flex", gap: "10px", marginBottom: "20px", padding: "15px", backgroundColor: "#f9f9f9", borderRadius: "14px", alignItems: "center" },
+  datePickerInput: { padding: "10px 15px", border: "1px solid #e0e0e0", borderRadius: "14px", fontSize: "14px", cursor: "pointer", flex: 1 },
+  datePickerClose: { padding: "8px 12px", backgroundColor: "#8B0000", color: "#FFF", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px" },
+  gridWrapper: { position: "relative", marginBottom: "30px" },
+  gridNote: { fontSize: "12px", color: "#999", marginBottom: "15px", textAlign: "right", paddingRight: "10px" },
+  gridContainer: { overflowX: "auto", border: "1px solid #e0e0e0", borderRadius: "14px" },
+  gridHeader: { display: "grid", gridTemplateColumns: "100px repeat(5, 1fr)", gap: "0", backgroundColor: "#8B0000", position: "sticky", top: 0, zIndex: 10 },
+  timeColumnHeader: { padding: "15px", color: "#FFF", fontWeight: "700", fontSize: "13px", textAlign: "center", borderRight: "1px solid rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.8px" },
+  roomColumnHeader: { padding: "15px", color: "#FFF", fontWeight: "700", fontSize: "14px", textAlign: "center", borderRight: "1px solid rgba(255,255,255,0.2)" },
+  gridRow: { display: "grid", gridTemplateColumns: "100px repeat(5, 1fr)", gap: "0", borderBottom: "1px solid #e0e0e0" },
+  timeCell: { padding: "12px 15px", fontSize: "12px", fontWeight: "600", color: "#8B0000", backgroundColor: "#f9f9f9", borderRight: "1px solid #e0e0e0", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" },
+  slotCell: { padding: "15px", minHeight: "60px", display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid #e0e0e0", position: "relative", backgroundColor: "#ffffff" },
+  slotClickable: { cursor: "pointer", transition: "all 0.2s ease" },
+  slotSelected: { backgroundColor: "#8B0000", color: "#FFF", fontWeight: "700" },
+  slotBooked: { backgroundColor: "#d0d0d0", color: "#666", cursor: "not-allowed", opacity: 0.7 },
+  checkmark: { fontSize: "20px", fontWeight: "700" },
+  bookButtonContainer: { display: "flex", justifyContent: "center", marginTop: "20px", position: "sticky", bottom: 0, backgroundColor: "white", padding: "20px 0", borderTop: "1px solid #e0e0e0", zIndex: 100 },
+  primaryButton: { padding: "14px 40px", backgroundColor: "#8B0000", color: "#FFF", border: "none", borderRadius: "14px", fontSize: "15px", fontWeight: "600", cursor: "pointer", transition: "background-color 0.3s ease", letterSpacing: "0.5px", minWidth: "300px" },
+  secondaryButton: { padding: "12px 30px", backgroundColor: "transparent", color: "#8B0000", border: "2px solid #8B0000", borderRadius: "14px", fontSize: "14px", fontWeight: "600", cursor: "pointer", transition: "all 0.3s ease" },
+  errorMessage: { backgroundColor: "#fff5f5", color: "#8B0000", padding: "14px", borderRadius: "14px", marginBottom: "20px", fontSize: "14px", border: "1px solid #ffcccb", display: "flex", alignItems: "center", gap: "10px" },
+  errorIcon: { fontSize: "18px" },
+  successMessage: { backgroundColor: "#f0fdf4", color: "#16a34a", padding: "14px", borderRadius: "14px", marginBottom: "20px", fontSize: "14px", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", gap: "10px" },
+  successIcon: { fontSize: "18px" },
+  scrollPrompt: { position: "fixed", bottom: "100px", right: "30px", zIndex: 99, animation: "slideIn 0.5s ease-out" },
+  scrollPromptContent: { display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", backgroundColor: "#8B0000", color: "#FFF", padding: "15px 20px", borderRadius: "20px", boxShadow: "0 4px 15px rgba(139, 0, 0, 0.3)", textAlign: "center" },
+  scrollArrow: { fontSize: "24px", fontWeight: "700", animation: "bounce 1.5s infinite" },
+  scrollText: { fontSize: "13px", fontWeight: "600", letterSpacing: "0.5px", whiteSpace: "nowrap" },
+  bookingsViewContainer: { backgroundColor: "white", padding: "30px", borderRadius: "20px", boxShadow: "0 2px 12px rgba(139, 0, 0, 0.08)", maxWidth: "900px", margin: "0 auto" },
+  bookingsTabs: { marginBottom: "20px", paddingBottom: "15px", borderBottom: "2px solid #e0e0e0" },
+  bookingsTitle: { fontSize: "18px", fontWeight: "700", margin: 0, color: "#2c2c2c", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "10px" },
+  badgeCount: { backgroundColor: "#8B0000", color: "white", padding: "2px 10px", borderRadius: "12px", fontSize: "13px" },
+  bookingsList: { display: "flex", flexDirection: "column", gap: "14px", marginBottom: "30px" },
+  bookingItem: { padding: "18px", borderRadius: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", border: "2px solid #8B0000", transition: "all 0.3s ease", backgroundColor: "#fafafa" },
+  bookingItemUpcoming: { backgroundColor: "#ffffff", borderColor: "#8B0000" },
+  bookingItemPast: { backgroundColor: "#f9f9f9", opacity: 0.7, borderColor: "#ddd" },
+  bookingDetails: { flex: 1 },
+  bookingRoom: { fontSize: "16px", fontWeight: "700", color: "#8B0000", marginBottom: "8px", letterSpacing: "0.5px" },
+  bookingTime: { fontSize: "14px", color: "#2c2c2c", marginBottom: "8px", fontWeight: "600" },
+  bookingBy: { fontSize: "13px", color: "#666", fontWeight: "600" },
+  bookingActions: { display: "flex", gap: "8px" },
+  editButton: { padding: "8px 12px", backgroundColor: "#8B0000", color: "#FFF", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "400", transition: "background-color 0.3s ease" },
+  cancelButton: { padding: "8px 12px", backgroundColor: "#8B0000", color: "#FFF", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "400", transition: "background-color 0.3s ease" },
+  modal: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: "20px" },
+  modalContent: { backgroundColor: "white", borderRadius: "20px", maxWidth: "600px", maxHeight: "90vh", overflow: "auto", width: "100%", boxShadow: "0 4px 20px rgba(139, 0, 0, 0.2)" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px", borderBottom: "1px solid #e0e0e0" },
+  modalClose: { padding: "8px 12px", backgroundColor: "transparent", color: "#8B0000", border: "none", cursor: "pointer", fontSize: "20px", fontWeight: "400" },
+  editForm: { padding: "20px" },
+  formGroup: { marginBottom: "20px" },
+  editLabel: { display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "10px", color: "#8B0000", textTransform: "uppercase", letterSpacing: "0.8px" },
+  editGridContainer: { border: "1px solid #e0e0e0", borderRadius: "14px", maxHeight: "400px", overflowY: "auto" },
+  editGridHeader: { display: "grid", gridTemplateColumns: "100px 1fr", gap: "0", backgroundColor: "#8B0000", position: "sticky", top: 0 },
+  editGridRow: { display: "grid", gridTemplateColumns: "100px 1fr", gap: "0", borderBottom: "1px solid #e0e0e0" },
+  modalButtons: { display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e0e0e0" },
+  emptyState: { textAlign: "center", color: "#999", padding: "50px 20px" },
+  emptyStateTitle: { fontSize: "16px", fontWeight: "600", color: "#666", marginBottom: "8px" },
+  emptyStateHint: { fontSize: "13px", marginTop: "8px" },
+  setupCard: { maxWidth: "450px", margin: "100px auto", backgroundColor: "white", padding: "50px", borderRadius: "20px", boxShadow: "0 4px 20px rgba(139, 0, 0, 0.12)", textAlign: "center" },
+  setupTitle: { fontSize: "24px", fontWeight: "700", marginBottom: "30px", color: "#2c2c2c" },
+  brandSubtitle: { fontSize: "18px", color: "#9CA3AF", marginTop: "4px" },
+  input: { width: "100%", padding: "12px 14px", backgroundColor: "#f9f9f9", color: "#2c2c2c", border: "1px solid #e0e0e0", borderRadius: "14px", fontSize: "14px", boxSizing: "border-box", marginBottom: "15px", transition: "border-color 0.3s ease" },
 };
 
 export default RoomBookingSystem;
