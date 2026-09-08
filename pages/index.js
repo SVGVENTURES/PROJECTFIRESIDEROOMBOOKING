@@ -409,9 +409,9 @@ const RoomBookingSystem = () => {
               style={styles.viewBookingsButton}
               title="View all bookings"
             >
-              View Bookings
+              View Bookings →
             </button>
-            <button onClick={handleLogout} style={styles.logoutButton}>Switch</button>
+            <button onClick={handleLogout} style={styles.switchButton}>Switch</button>
           </div>
         </div>
 
@@ -467,6 +467,9 @@ const RoomBookingSystem = () => {
 
           {/* Time Slots Grid */}
           <div style={styles.gridWrapper}>
+            <div style={styles.gridNote}>
+              1 slot = 30 minutes
+            </div>
             <div style={styles.gridContainer}>
               {/* Header Row - Room Names */}
               <div style={styles.gridHeader}>
@@ -506,9 +509,6 @@ const RoomBookingSystem = () => {
                   </div>
                 );
               })}
-            </div>
-            <div style={styles.gridNote}>
-              1 slot = 30 min<br/>10:00 = 10:00-10:30
             </div>
           </div>
 
@@ -551,9 +551,9 @@ const RoomBookingSystem = () => {
               onClick={() => { setViewMode("booking"); setError(""); setSuccessMessage(""); }}
               style={styles.viewBookingsButton}
             >
-              Back to Booking
+              ← Back to Booking
             </button>
-            <button onClick={handleLogout} style={styles.logoutButton}>Switch</button>
+            <button onClick={handleLogout} style={styles.switchButton}>Switch</button>
           </div>
         </div>
 
@@ -718,7 +718,6 @@ const RoomBookingSystem = () => {
                 const bookingDate = new Date(booking.date);
                 const today = new Date(getTodayDateString());
                 const isUpcoming = bookingDate >= today;
-                const isUserBooking = booking.bookedBy === userName;
 
                 return (
                   <div
@@ -737,24 +736,6 @@ const RoomBookingSystem = () => {
                         Booked by <strong>{booking.bookedBy}</strong>
                       </div>
                     </div>
-                    {isUserBooking && (
-                      <div style={styles.bookingActions}>
-                        <button
-                          onClick={() => handleStartEdit(booking)}
-                          style={styles.editButton}
-                          title="Edit this booking"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBooking(booking)}
-                          style={styles.cancelButton}
-                          title="Delete this booking"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -820,12 +801,13 @@ const styles = {
   },
   userBadge: {
     padding: "10px 20px",
-    backgroundColor: "#8B0000",
-    color: "#FFF",
+    backgroundColor: "white",
+    color: "#8B0000",
     borderRadius: "25px",
     fontSize: "13px",
     fontWeight: "600",
     letterSpacing: "0.5px",
+    border: "2px solid #8B0000",
   },
   logoutButton: {
     padding: "10px 20px",
@@ -839,6 +821,17 @@ const styles = {
     transition: "all 0.3s ease",
   },
   viewBookingsButton: {
+    padding: "10px 20px",
+    backgroundColor: "#8B0000",
+    color: "#FFF",
+    border: "2px solid #8B0000",
+    borderRadius: "25px",
+    cursor: "pointer",
+    fontSize: "13px",
+    fontWeight: "600",
+    transition: "all 0.3s ease",
+  },
+  switchButton: {
     padding: "10px 20px",
     backgroundColor: "#8B0000",
     color: "#FFF",
@@ -917,6 +910,13 @@ const styles = {
     position: "relative",
     marginBottom: "30px",
   },
+  gridNote: {
+    fontSize: "12px",
+    color: "#999",
+    marginBottom: "15px",
+    textAlign: "right",
+    paddingRight: "10px",
+  },
   gridContainer: {
     overflowX: "auto",
     border: "1px solid #e0e0e0",
@@ -930,15 +930,6 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 10,
-  },
-  gridNote: {
-    position: "absolute",
-    top: "-35px",
-    right: "0",
-    fontSize: "11px",
-    color: "#999",
-    textAlign: "right",
-    lineHeight: "1.4",
   },
   timeColumnHeader: {
     padding: "15px",
