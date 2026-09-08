@@ -3,10 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 const RoomBookingSystem = () => {
   const ROOMS = ["UR1", "UR2", "Prithvi", "Tejas", "Akash"];
   const OFFICE_HOURS = { start: 10, end: 20 }; // 10 AM to 8 PM
+  const ADMIN_PASSWORD = "1234";
 
   // ============= STATE =============
   const [userName, setUserName] = useState("");
   const [userNameInput, setUserNameInput] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [bookings, setBookings] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [selectedSlots, setSelectedSlots] = useState({});
@@ -176,6 +180,20 @@ const RoomBookingSystem = () => {
       const name = userNameInput.trim();
       setUserName(name);
       setUserNameInput("");
+      setIsAdmin(false);
+    }
+  }
+
+  function handleAdminLogin() {
+    setError("");
+    if (adminPasswordInput === ADMIN_PASSWORD) {
+      setUserName("Admin");
+      setIsAdmin(true);
+      setAdminPasswordInput("");
+      setShowAdminLogin(false);
+    } else {
+      setError("Incorrect password");
+      setAdminPasswordInput("");
     }
   }
 
@@ -295,7 +313,7 @@ const RoomBookingSystem = () => {
   }
 
   function handleStartEdit(booking) {
-    if (booking.bookedBy !== userName) {
+    if (!isAdmin && booking.bookedBy !== userName) {
       setError("You can only edit your own bookings");
       return;
     }
@@ -384,7 +402,7 @@ const RoomBookingSystem = () => {
   }
 
   function handleDeleteBooking(booking) {
-    if (booking.bookedBy !== userName) {
+    if (!isAdmin && booking.bookedBy !== userName) {
       setError("You can only delete your own bookings");
       return;
     }
@@ -401,11 +419,49 @@ const RoomBookingSystem = () => {
   function handleLogout() {
     setUserName("");
     setUserNameInput("");
+    setIsAdmin(false);
+    setAdminPasswordInput("");
+    setShowAdminLogin(false);
     setViewMode("booking");
   }
 
   // ============= RENDER: LOGIN SCREEN =============
   if (!userName) {
+    // Admin Password Screen
+    if (showAdminLogin) {
+      return (
+        <div style={styles.container}>
+          <div style={styles.setupCard}>
+            <h1 style={styles.brandTitle}>FIRESIDE</h1>
+            <p style={styles.brandSubtitle}>Ventures</p>
+            <h2 style={styles.setupTitle}>Admin Access</h2>
+            <input
+              type="password"
+              placeholder="Admin Password"
+              value={adminPasswordInput}
+              onChange={(e) => setAdminPasswordInput(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleAdminLogin()}
+              style={styles.input}
+              autoFocus
+              maxLength="50"
+            />
+            {error && (
+              <div style={styles.errorMessage} role="alert">
+                <span style={styles.errorIcon}>⚠</span> {error}
+              </div>
+            )}
+            <button onClick={handleAdminLogin} disabled={!adminPasswordInput.trim()} style={{...styles.primaryButton, opacity: !adminPasswordInput.trim() ? 0.5 : 1, cursor: !adminPasswordInput.trim() ? "not-allowed" : "pointer"}}>
+              Enter as Admin
+            </button>
+            <button onClick={() => { setShowAdminLogin(false); setAdminPasswordInput(""); setError(""); }} style={{...styles.secondaryButton, marginTop: "12px"}}>
+              Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Regular Login Screen
     return (
       <div style={styles.container}>
         <div style={styles.setupCard}>
@@ -424,6 +480,9 @@ const RoomBookingSystem = () => {
           />
           <button onClick={handleSetUserName} disabled={!userNameInput.trim()} style={{...styles.primaryButton, opacity: !userNameInput.trim() ? 0.5 : 1, cursor: !userNameInput.trim() ? "not-allowed" : "pointer"}}>Get Started</button>
           {!userNameInput.trim() && <p style={{color: "#8B0000", fontSize: "12px", marginTop: "12px"}}>Please enter your name</p>}
+          <button onClick={() => { setShowAdminLogin(true); setError(""); }} style={styles.adminLoginButton}>
+            Admin Log In
+          </button>
         </div>
       </div>
     );
@@ -444,7 +503,7 @@ const RoomBookingSystem = () => {
             </div>
           </div>
           <div style={styles.userInfo}>
-            <div style={styles.userBadge}>{userName}</div>
+            <div style={styles.userBadge}>{isAdmin ? "🔐 Admin" : userName}</div>
             <button onClick={() => setViewMode("viewBookings")} style={styles.viewBookingsButton}>
               View Bookings →
             </button>
@@ -564,7 +623,7 @@ const RoomBookingSystem = () => {
 
   // ============= RENDER: VIEW BOOKINGS =============
   if (viewMode === "viewBookings") {
-    const userBookings = bookings.filter(b => b.bookedBy === userName);
+    const userBookings = isAdmin ? bookings : bookings.filter(b => b.bookedBy === userName);
     const allBookings = bookings;
 
     return (
@@ -577,7 +636,7 @@ const RoomBookingSystem = () => {
             </div>
           </div>
           <div style={styles.userInfo}>
-            <div style={styles.userBadge}>{userName}</div>
+            <div style={styles.userBadge}>{isAdmin ? "🔐 Admin" : userName}</div>
             <button onClick={() => { setViewMode("booking"); setError(""); setSuccessMessage(""); }} style={styles.viewBookingsButton}>
               ← Back to Booking
             </button>
@@ -676,13 +735,13 @@ const RoomBookingSystem = () => {
           )}
 
           <div style={styles.bookingsTabs}>
-            <h2 style={styles.bookingsTitle}>Your Bookings <span style={styles.badgeCount}>{userBookings.length}</span></h2>
+            <h2 style={styles.bookingsTitle}>{isAdmin ? "All Bookings (Admin View)" : "Your Bookings"} <span style={styles.badgeCount}>{userBookings.length}</span></h2>
           </div>
 
           {userBookings.length === 0 ? (
             <div style={styles.emptyState}>
-              <p style={styles.emptyStateTitle}>No bookings yet</p>
-              <p style={styles.emptyStateHint}>Go back to booking to create your first reservation</p>
+              <p style={styles.emptyStateTitle}>{isAdmin ? "No bookings yet" : "No bookings yet"}</p>
+              <p style={styles.emptyStateHint}>{isAdmin ? "No reservations in the system" : "Go back to booking to create your first reservation"}</p>
             </div>
           ) : (
             <div style={styles.bookingsList}>
@@ -708,33 +767,37 @@ const RoomBookingSystem = () => {
             </div>
           )}
 
-          <div style={styles.bookingsTabs}>
-            <h2 style={styles.bookingsTitle}>All Bookings <span style={styles.badgeCount}>{allBookings.length}</span></h2>
-          </div>
+          {!isAdmin && (
+            <>
+              <div style={styles.bookingsTabs}>
+                <h2 style={styles.bookingsTitle}>All Bookings <span style={styles.badgeCount}>{allBookings.length}</span></h2>
+              </div>
 
-          {allBookings.length === 0 ? (
-            <div style={styles.emptyState}>
-              <p style={styles.emptyStateTitle}>No reservations yet</p>
-              <p style={styles.emptyStateHint}>Be the first to book a room</p>
-            </div>
-          ) : (
-            <div style={styles.bookingsList}>
-              {allBookings.map((booking) => {
-                const bookingDate = new Date(booking.date);
-                const today = new Date(getTodayDateString());
-                const isUpcoming = bookingDate >= today;
+              {allBookings.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <p style={styles.emptyStateTitle}>No reservations yet</p>
+                  <p style={styles.emptyStateHint}>Be the first to book a room</p>
+                </div>
+              ) : (
+                <div style={styles.bookingsList}>
+                  {allBookings.map((booking) => {
+                    const bookingDate = new Date(booking.date);
+                    const today = new Date(getTodayDateString());
+                    const isUpcoming = bookingDate >= today;
 
-                return (
-                  <div key={booking.id} style={{...styles.bookingItem, ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)}}>
-                    <div style={styles.bookingDetails}>
-                      <div style={styles.bookingRoom}>{booking.room}</div>
-                      <div style={styles.bookingTime}>{formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}</div>
-                      <div style={styles.bookingBy}>Booked by <strong>{booking.bookedBy}</strong></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    return (
+                      <div key={booking.id} style={{...styles.bookingItem, ...(isUpcoming ? styles.bookingItemUpcoming : styles.bookingItemPast)}}>
+                        <div style={styles.bookingDetails}>
+                          <div style={styles.bookingRoom}>{booking.room}</div>
+                          <div style={styles.bookingTime}>{formatDateString(booking.date)} • {booking.startTime} – {booking.endTime}</div>
+                          <div style={styles.bookingBy}>Booked by <strong>{booking.bookedBy}</strong></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1014,6 +1077,19 @@ const styles = {
     fontWeight: "600",
     cursor: "pointer",
     transition: "all 0.3s ease",
+  },
+  adminLoginButton: {
+    marginTop: "16px",
+    padding: "8px 12px",
+    backgroundColor: "transparent",
+    color: "#8B0000",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "13px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    textDecoration: "underline",
   },
   errorMessage: {
     backgroundColor: "#fff5f5",
@@ -1312,3 +1388,4 @@ const styles = {
 };
 
 export default RoomBookingSystem;
+
